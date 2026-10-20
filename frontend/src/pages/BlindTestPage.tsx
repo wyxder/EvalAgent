@@ -258,7 +258,7 @@ const BlindTestPage: React.FC = () => {
               <Space direction="vertical" style={{ width: '100%' }} size={10}>
                 <Input.TextArea
                   value={targetTestQuestion[prefix]}
-                  onChange={(e) => setTargetTestQuestion((prev) => ({ ...prev, [prefix]: e.target.value }))}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTargetTestQuestion((prev) => ({ ...prev, [prefix]: e.target.value }))}
                   autoSize={{ minRows: 2, maxRows: 4 }}
                   placeholder="输入一条测试问题"
                 />
@@ -719,7 +719,7 @@ const BlindTestPage: React.FC = () => {
             </Row>
             <TextArea
               value={voteNote}
-              onChange={(e) => setVoteNote(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setVoteNote(e.target.value)}
               placeholder="可选：记录你为什么这么判断，例如“左侧更完整，但略啰嗦”"
               autoSize={{ minRows: 3, maxRows: 6 }}
             />

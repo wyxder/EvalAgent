@@ -133,4 +133,39 @@ export const voteBlindTestRow = (id: number, rowId: number, data: any) =>
 export const cancelBlindTest = (id: number) => api.post(`/blind-tests/${id}/cancel`).then(r => r.data);
 export const testBlindTestTarget = (data: any) => api.post('/blind-tests/test-target', data).then(r => r.data);
 
+// ======================== RSI ========================
+
+export const listRsiLoops = (params?: any) =>
+  api.get('/rsi/loops', { params }).then(r => r.data);
+export const createRsiLoop = (data: any) => api.post('/rsi/loops', data).then(r => r.data);
+export const getRsiLoop = (id: number) => api.get(`/rsi/loops/${id}`).then(r => r.data);
+export const startRsiLoop = (id: number) => api.post(`/rsi/loops/${id}/start`).then(r => r.data);
+export const cancelRsiLoop = (id: number) => api.post(`/rsi/loops/${id}/cancel`).then(r => r.data);
+export const getRsiLoopLogs = (id: number, offset = 0) =>
+  api.get(`/rsi/loops/${id}/logs`, { params: { offset } }).then(r => r.data);
+export const listRsiIterations = (id: number) =>
+  api.get(`/rsi/loops/${id}/iterations`).then(r => r.data);
+export const getRsiIteration = (id: number) =>
+  api.get(`/rsi/iterations/${id}`).then(r => r.data);
+export const approveRsiIteration = (id: number, data?: any) =>
+  api.post(`/rsi/iterations/${id}/approve`, data || {}).then(r => r.data);
+export const rejectRsiIteration = (id: number, data: any) =>
+  api.post(`/rsi/iterations/${id}/reject`, data).then(r => r.data);
+export const rollbackRsiLoop = (id: number, data: any) =>
+  api.post(`/rsi/loops/${id}/rollback`, data).then(r => r.data);
+export const listRsiVersions = (scope: string, scopeId: number) =>
+  api.get(`/rsi/configs/${scope}/${scopeId}/versions`).then(r => r.data);
+export const listRsiLoopVersions = (loopId: number) =>
+  api.get(`/rsi/loops/${loopId}/versions`).then(r => r.data);
+export const restoreRsiVersion = (versionId: number, actor?: string) =>
+  api.post(`/rsi/configs/versions/${versionId}/restore`, undefined, { params: { actor } }).then(r => r.data);
+export const previewRsiProposal = (id: number, data?: any) =>
+  api.post(`/rsi/proposals/${id}/preview`, data || {}).then(r => r.data);
+export const getRsiCompare = (loopId: number, iterationId?: number) =>
+  api.get(`/rsi/loops/${loopId}/compare`, {
+    params: iterationId ? { iteration_id: iterationId } : undefined,
+  }).then(r => r.data);
+export const createRsiHardCases = (loopId: number, data?: any) =>
+  api.post(`/rsi/loops/${loopId}/hard-cases`, data || {}).then(r => r.data);
+
 export default api;

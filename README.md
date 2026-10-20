@@ -29,6 +29,7 @@
 3. **支持离线与在线双模评测**：既支持直接对已知输出结果做批量离线质检，又支持直接挂载开发中的 RESTful Chat / RAG / Agent 接口进行实时在线评测，自动捕获请求 Trace 与网络耗时。
 4. **科学严谨的场景快照机制**：评测任务触发瞬间自动固化当前场景所挂载的指标、权重、阈值与 Prompt 覆盖配置，避免后续指标修改导致历史任务对比失真。
 5. **AI 自动打分与人工评测双轮驱动**：结合自动化 LLM-as-a-Judge 与交互式人工复审机制，更提供防偏置的人工双盲 A/B 测试系统，保障上线决策可靠。
+6. **评测驱动的配置自进化（RSI）**：以已完成评测为基线，自动完成失败归因、白名单补丁提案、影子回归与阈值无关验收，经人工审批后写回场景配置，并支持版本快照与一键回滚（详见 [usage-guide 第八章](docs/ok/usage-guide.md) 与 [RSIX.md](docs/RSIX.md)）。
 
 ---
 
@@ -103,15 +104,24 @@ ai-eval-platform/
 │   │   │   ├── metric.py                  # 评测指标定义、自定义 Prompt 指标管理
 │   │   │   ├── rag_dataset_job.py         # 文档切片与 RAG 合成数据集异步生成任务
 │   │   │   ├── report.py                  # 评测报告详情、样本明细、人工复核与报告版本比对
+│   │   │   ├── rsi.py                     # RSI 自进化循环、审批、回滚、预览与版本接口
 │   │   │   └── scenario.py                # 评测场景模板管理与指标权重配置
 │   │   ├── core/                          # 核心执行引擎与基础设施
 │   │   │   ├── config.py                  # 全局 Settings 配置类（基于 Pydantic-Settings）
 │   │   │   ├── database.py                # 数据库连接池、Base 基类与运行时 Schema 校验
+│   │   │   ├── evaluation_debug.py        # 单行沙盒调试抽取（支持场景快照覆盖）
 │   │   │   ├── evaluation_engine.py       # 原生评测引擎：指标打分、OpenAI Client、理由提取
 │   │   │   ├── endpoint_eval.py           # 在线接口调用探针、动态参数插值与 Trace 抽取
 │   │   │   ├── prompt_manager.py          # 评测 System Prompt、评分指令与模板渲染器
 │   │   │   ├── rag_dataset_generator.py   # RAG 知识库文档智能解析、分块与问答合成器
 │   │   │   ├── blind_test_engine.py       # 双盲 A/B 测试异步分发与偏好聚合引擎
+│   │   │   ├── rsi_dataset.py             # RSI 失败样本派生 hard-case 数据集（只追加）
+│   │   │   ├── rsi_diagnosis.py           # 失败归因：分簇、证据抽取与规则降级
+│   │   │   ├── rsi_engine.py              # RSI 循环编排：预算、迭代状态机、审批与回滚
+│   │   │   ├── rsi_patch.py               # Patch 白名单校验、漂移检查、写回与版本恢复
+│   │   │   ├── rsi_policy.py              # 验收策略、holdout 切分、指标汇总与判定
+│   │   │   ├── rsi_proposer.py            # 提案生成与静态校验
+│   │   │   ├── rsi_regression.py          # 影子回归任务创建与执行
 │   │   │   └── scenario_snapshot.py       # 场景快照固化与历史不可变版本归档
 │   │   ├── models/                        # SQLAlchemy ORM 实体数据模型定义
 │   │   │   ├── dataset.py                 # 数据集 (Dataset) 与数据行 (DatasetRow)
@@ -120,6 +130,7 @@ ai-eval-platform/
 │   │   │   ├── llm_config.py              # LLM Judge 配置实体
 │   │   │   ├── metric_definition.py       # 指标元数据定义 (MetricDefinition)
 │   │   │   ├── rag_dataset_job.py         # RAG 合成任务、文档、切片与合成样本模型
+│   │   │   ├── rsi.py                     # RSI 循环、迭代、提案与配置版本模型
 │   │   │   └── scenario.py                # 场景模板 (EvalScenario) 与场景指标绑定
 │   │   └── schemas/                       # Pydantic 请求与响应验证模型
 │   │       ├── dataset.py                 # 数据集 DTO
@@ -128,6 +139,7 @@ ai-eval-platform/
 │   │       ├── llm_config.py              # 模型配置 DTO
 │   │       ├── metric_definition.py       # 指标定义 DTO
 │   │       ├── rag_dataset_job.py         # 合成任务 DTO
+│   │       ├── rsi.py                     # RSI 循环、提案、迭代与版本 DTO
 │   │       ├── scenario.py                # 场景配置 DTO
 │   │       └── sensitive.py               # 密码与 API Key 脱敏过滤器
 │   └── tests/                             # 后端自动化测试套件
@@ -154,15 +166,18 @@ ai-eval-platform/
 │       │   ├── EvaluationPage.tsx         # 评测任务实时监控、流式日志与进度
 │       │   ├── ReportListPage.tsx         # 评测报告列表总览
 │       │   ├── ReportDetailPage.tsx       # 报告深度详情、雷达图、人工复核与基线对比
+│       │   ├── RsiLoopListPage.tsx        # RSI 自进化循环列表、创建与预算概况
+│       │   ├── RsiLoopDetailPage.tsx      # RSI 循环详情、归因/提案审批、回滚与日志
 │       │   └── BlindTestPage.tsx          # 人工双盲偏好评测与 A/B 投票室
 │       ├── components/                    # 通用业务组件
 │       │   ├── ConversationViewer.tsx     # 多轮对话沉浸式展示组件
 │       │   ├── DataImportModal.tsx        # CSV / JSON 数据导入弹窗
 │       │   ├── MetricConfigPanel.tsx      # 指标权重滑块与阈值配置面板
-│       │   └── MetricHelpDrawer.tsx       # 指标科学原理与计算公式帮助抽屉
+│       │   ├── MetricHelpDrawer.tsx       # 指标科学原理与计算公式帮助抽屉
+│       │   └── rsi/                       # RSI 创建、审批、Diff、趋势与归因组件
 │       └── types/                         # TypeScript 全局接口与数据契约定义
 ├── docs/                                  # 核心系统设计与使用指南文档
-│   ├── usage-guide.md                     # 平台深度使用指南
+│   ├── usage-guide.md                     # 平台深度使用指南（含 RSI 第八章）
 │   ├── evaluation-guide.md                # 评测指标原理与实践指南
 │   ├── database-and-storage.md            # 存储架构选型与 PostgreSQL 迁移指南
 │   ├── comparison.md                      # 与行业评测框架对比深度分析

@@ -240,6 +240,63 @@ DEFAULT_TARGET_ANSWER_ONLY_PROMPT = """请回答用户问题，并严格输出 J
 不要输出额外解释。"""
 
 
+# RSI (evaluation-driven config self-evolution) system prompts. They only define
+# output shape and safety boundaries; evidence and current config stay in the
+# user payload built by core/rsi_diagnosis.py and core/rsi_proposer.py.
+RSI_DIAGNOSIS_SYSTEM_PROMPT = (
+    "你是 AI 评测平台的失败归因分析器。只能依据用户提供的失败样本与指标定义归纳原因，"
+    "不要编造样本中没有的证据。必须返回严格 JSON，禁止输出 Markdown。"
+    "root_cause_type 只能取：prompt_ambiguity / missing_field / judge_misconfiguration / "
+    "retrieval_gap / answer_incomplete / agent_tool_error / dataset_reference_noise / "
+    "endpoint_failure / unsupported_specifics / unknown。"
+    "suggested_lever 只能取：scenario_prompt / metric_config / threshold / dataset / "
+    "endpoint_template / none。"
+)
+
+RSI_PROPOSER_SYSTEM_PROMPT = (
+    "你是 AI 评测平台的配置优化提案器。你只能提出白名单内的结构化配置补丁，"
+    "禁止输出代码、SQL、URL、密钥或任何删除操作。必须返回严格 JSON，禁止输出 Markdown。"
+    "每条提案必须引用失败行 id 与 Judge 理由片段；没有证据的提案会被平台丢弃。"
+    "只能修改用户提供的当前配置快照，不能假设快照之外的事实。"
+    "平台会校验 before_value 是否与基线一致，若不一致提案会被直接拒绝。"
+)
+
+RSI_DIAGNOSIS_OUTPUT_SCHEMA = """{
+  "clusters": [
+    {
+      "label": "一句中文失败簇描述",
+      "root_cause_type": "unsupported_specifics",
+      "affected_metric": "指标名",
+      "evidence_row_ids": [1, 2],
+      "suggested_lever": "scenario_prompt",
+      "severity": "high"
+    }
+  ],
+  "summary": "本轮主要问题集中在……"
+}"""
+
+RSI_PROPOSAL_OUTPUT_SCHEMA = """{
+  "proposals": [
+    {
+      "target_type": "scenario_metric",
+      "target_id": 12,
+      "field": "prompt_override",
+      "operation": "set",
+      "before_value": "当前值，必须与给定配置一致",
+      "after_value": "修改后的完整值",
+      "rationale": "必须引用失败证据的中文理由",
+      "evidence": {
+        "metric": "指标名",
+        "failed_row_ids": [3, 7],
+        "reason_snippets": ["Judge 理由片段"],
+        "cluster": "失败簇标签"
+      },
+      "risk_level": "medium"
+    }
+  ]
+}"""
+
+
 def render_prompt(prompt: str, context: dict[str, t.Any]) -> str:
     """Render business scoring prompts using ``{field}`` or ``{group.field}`` variables.
 

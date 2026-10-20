@@ -532,7 +532,92 @@ curl -X POST http://localhost:8000/api/metrics \
 
 ---
 
-## 八、常见问题
+## 八、RSI 自进化闭环
+
+RSI（Recursive Self-Improvement）把「评测 → 归因 → 提案 → 影子回归 → 审批 → 写回 → 回滚」串成一个可审计的闭环：系统只提出白名单内的配置补丁（场景指标 Prompt、通过阈值、指标定义等），每轮先在影子任务中回归验证，再由人决定是否写回。入口在左侧菜单「RSI 自进化」，或直接访问 `/api/rsi/*`。
+
+> 设计细节与字段级约定见 [`docs/RSIX.md`](../RSIX.md)。
+
+### 8.1 前置条件
+
+1. 已有一条**已完成**的评测任务作为基线（`baseline_eval_id`），且该任务带有 `scenario_snapshot`。
+2. 至少一个可用 LLM 配置（默认沿用基线任务的 Judge 配置）；提案模型可单独指定，不指定则与 Judge 相同。
+3. `backend/.env` 中 `RSI_ENABLED=true`；设为 `false` 时所有 `/api/rsi/*` 返回 403，前端入口也会隐藏。
+
+### 8.2 创建循环
+
+在「RSI 自进化」页点击「新建循环」，选择基线评测任务并填写：
+
+| 字段 | 说明 |
+|------|------|
+| `name` | 循环名称 |
+| `baseline_eval_id` | 基线评测任务，决定数据集、场景与冻结的指标快照 |
+| `objective_metric` / `objective_mode` | 目标指标与口径：`reference_pass_rate`（按冻结阈值算通过率）或 `metric_mean`（该指标平均分） |
+| `objective_target` | 可选，目标值，仅用于展示 |
+| `budget` | 迭代数、LLM 调用数、分钟数、每轮提案数、最大行数、连续无增益次数上限 |
+| `acceptance_policy` | 目标增益、受保护指标、最大降幅、holdout 比例、人工审批要求 |
+| `auto_apply_low_risk` | 默认 `false`；即使打开，也只对低风险且满足自动采纳门槛的补丁生效 |
+
+同一场景同时只允许一个 `running` / `awaiting_review` 的循环，冲突返回 409。
+
+### 8.3 一轮循环做了什么
+
+1. **基线取数**：按冻结阈值统计基线通过率与指标均值，并用稳定哈希切出 train / holdout。
+2. **失败归因**：只读 train 行，按指标与根因分簇；LLM 不可用时降级为规则归因（`fallback=true`）。
+3. **提案生成**：提案模型输出补丁列表，必须带证据与理由，最多 `max_proposals_per_iteration` 条。
+4. **校验**：白名单、目标存在性、`before_value` 漂移、长度/敏感串、同值、跨轮去重依次校验，不通过直接标记 `rejected`。
+5. **影子回归**：把候选快照写入新的 `EvalTask`（`result_save_mode=task_only`）并复用 `run_evaluation` 执行，不改动原场景、不改动评分逻辑。
+6. **验收判定**：用**创建循环时冻结的阈值**计算 train/holdout 增益，检查受保护指标降幅、错误率与新增失败数，给出 `accepted / rejected / inconclusive` 建议。
+7. **写回或待审**：命中自动采纳条件才直接写回；否则循环进入 `awaiting_review`，等待人工审批。
+
+循环状态：`pending` → `running` → `awaiting_review` → `running` → `completed`，异常为 `failed`；达到预算上限会以 `failed` 停止并写入 `error_message`。
+
+### 8.4 审批、拒绝与回滚
+
+- **审批**：在详情页逐条查看补丁 Diff（`before_value` → `value`）、归因证据与回归指标，确认后点击「通过」。写回前会再执行一次 `before_value` 漂移校验，配置已被他人改动时返回 422 并保留现场。
+- **拒绝**：填写原因后提案全部标记 `rejected`，本轮计入连续无增益，可选择是否继续下一轮。
+- **回滚**：详情页「回滚」支持按版本或按迭代回滚；回滚是**追加一条新版本**恢复旧值，不会删除历史。
+- **版本**：`GET /api/rsi/loops/{id}/versions` 查看循环相关版本，`/api/rsi/configs/{scope}/{scope_id}/versions` 查看某个实体的全部版本，`POST /api/rsi/configs/versions/{id}/restore` 恢复任意版本。
+
+### 8.5 安全与脱敏约定
+
+- 只接受白名单字段：`scenario_metric.prompt_override / pass_threshold`、`metric_definition.config.*`、`endpoint_target.request_body_template`、`scenario.description`；`weight` 暂不允许修改。
+- 所有写回先落 `rsi_config_versions` 快照，再写实体；补丁值禁止包含 `authorization`、`api_key`、`sk-`、`Bearer` 等敏感串。
+- 接口响应中的 endpoint 配置经 `redact_sensitive_mapping` 脱敏（`authorization` 置空并返回 `authorization_masked`）。
+- 验收、行迁移与约束全部使用冻结的 `reference_thresholds`，候选自身改阈值不会污染判定；归因与提案只读 train，holdout 只在判定阶段使用。
+
+### 8.6 沙盒预览与 hard-case 数据集
+
+- **沙盒预览**：`POST /api/rsi/proposals/{id}/preview` 用候选快照对单条数据跑一次调试评测（复用 `/api/evaluations/debug` 的抽取逻辑），用于人工判断提案是否值得回归。
+- **hard-case 数据集**：`POST /api/rsi/loops/{id}/hard-cases` 把最近一轮的失败行派生为**只追加**的新数据集，行内写入 `_rsi_origin` 溯源信息，并自动排除 holdout 行。
+
+### 8.7 主要接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/POST | `/api/rsi/loops` | 列表 / 创建循环 |
+| GET | `/api/rsi/loops/{id}` | 循环详情（含预算用量、holdout 配置） |
+| POST | `/api/rsi/loops/{id}/start` | 启动（后台线程执行） |
+| POST | `/api/rsi/loops/{id}/cancel` | 取消并终止候选任务 |
+| GET | `/api/rsi/loops/{id}/logs?offset=` | 增量日志 |
+| GET | `/api/rsi/loops/{id}/iterations` | 迭代列表 |
+| GET | `/api/rsi/iterations/{id}` | 迭代详情（指标、判定、提案） |
+| POST | `/api/rsi/iterations/{id}/approve` | 审批写回 |
+| POST | `/api/rsi/iterations/{id}/reject` | 拒绝本轮 |
+| POST | `/api/rsi/loops/{id}/rollback` | 按版本 / 迭代回滚 |
+| GET | `/api/rsi/loops/{id}/compare` | 基线与候选指标对比 |
+| POST | `/api/rsi/loops/{id}/hard-cases` | 派生 hard-case 数据集 |
+| POST | `/api/rsi/proposals/{id}/preview` | 单行沙盒预览 |
+
+### 8.8 当前限制
+
+- 影子回归目前按数据集全量执行，`max_rows_per_iteration` 只用于预算估算与归因样本裁剪。
+- 自动采纳要求低风险补丁、holdout 样本量达到 `min_rows_for_auto_accept` 且增益达 `min_gain`；默认仍走人工审批。
+- `weight` 不在白名单内（现有引擎的汇总不使用权重，改它不会产生可验证收益）。
+
+---
+
+## 九、常见问题
 
 ### Q: 评测一直在 running 状态不结束？
 
@@ -555,3 +640,11 @@ CSV 中的 JSON 数组需要双引号转义：`"[""文本1"", ""文本2""]"`。�
 1. 编辑 `backend/.env` 中的 `LLM_API_KEY`
 2. 重启后端
 3. 或者在界面的「LLM 配置」中编辑，填入新的 API Key 保存
+
+### Q: RSI 页面提示 403 或菜单不显示？
+
+后端 `RSI_ENABLED` 为 `false`。改为 `true` 后重启后端；前端通过 `GET /api/rsi/loops` 探测开关状态。
+
+### Q: RSI 创建循环提示 409？
+
+同一场景已有 `running` 或 `awaiting_review` 的循环。先审批/拒绝上一轮，或取消旧循环再创建。

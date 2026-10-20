@@ -934,7 +934,7 @@ const ExperimentWorkbenchPage: React.FC = () => {
               </Card>
               <TextArea
                 value={endpointTestInput}
-                onChange={(event) => setEndpointTestInput(event.target.value)}
+                onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => setEndpointTestInput(event.target.value)}
                 autoSize={{ minRows: 3, maxRows: 5 }}
                 placeholder="输入一条试跑问题"
               />
@@ -1290,7 +1290,7 @@ const ExperimentWorkbenchPage: React.FC = () => {
                       </Text>
                       <TextArea
                         value={effectivePromptTemplate}
-                        onChange={(event) => updateMetricOverride(selectedScenarioMetric.metric_definition_id, {
+                        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => updateMetricOverride(selectedScenarioMetric.metric_definition_id, {
                           prompt_override: event.target.value,
                         })}
                         autoSize={{ minRows: 10, maxRows: 18 }}

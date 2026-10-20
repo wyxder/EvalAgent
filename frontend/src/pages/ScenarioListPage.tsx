@@ -584,7 +584,7 @@ const ScenarioListPage: React.FC = () => {
                             allowClear
                             placeholder="可选：填写该指标在当前场景下的覆盖规则。例如当前业务必须覆盖哪些规则、哪些情况必须扣分、低于多少分算失败。留空则使用指标管理中的默认评分规则。"
                             value={sm.prompt_override || ''}
-                            onChange={(e) => setSelectedMetrics((prev) =>
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setSelectedMetrics((prev) =>
                               prev.map((m) => m.metric_definition_id === sm.metric_definition_id
                                 ? { ...m, prompt_override: e.target.value || null }
                                 : m)

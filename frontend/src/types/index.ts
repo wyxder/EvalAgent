@@ -348,6 +348,265 @@ export interface RagDatasetSample {
   updated_at?: string | null;
 }
 
+// ======================== RSI ========================
+
+export interface RsiBudget {
+  max_iterations?: number | null;
+  max_rows_per_iteration?: number | null;
+  max_llm_calls?: number | null;
+  max_minutes?: number | null;
+  max_proposals_per_iteration?: number | null;
+  max_consecutive_no_gain?: number | null;
+}
+
+export interface RsiUsage {
+  llm_calls?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  elapsed_ms?: number;
+  evaluations?: number;
+  consecutive_no_gain?: number;
+}
+
+export interface RsiMetricStat {
+  mean?: number | null;
+  min?: number | null;
+  max?: number | null;
+  count?: number;
+  error_count?: number;
+  pass_rate?: number | null;
+}
+
+export interface RsiSliceSummary {
+  total?: number;
+  pass_count?: number;
+  fail_count?: number;
+  error_count?: number;
+  pass_rate?: number;
+  error_rate?: number;
+  native_pass_rate?: number | null;
+  metric_stats?: Record<string, RsiMetricStat>;
+}
+
+export interface RsiDeltaSlice {
+  baseline?: RsiSliceSummary;
+  candidate?: RsiSliceSummary;
+  delta?: Record<string, any>;
+}
+
+export interface RsiDecisionObjective {
+  mode?: string | null;
+  metric?: string | null;
+  baseline?: number | null;
+  candidate?: number | null;
+  gain?: number | null;
+  target?: number | null;
+  min_gain?: number | null;
+}
+
+export interface RsiDecisionCheck {
+  name?: string;
+  ok?: boolean;
+  detail?: string;
+}
+
+export interface RsiDecisionMetrics {
+  decision?: string;
+  recommended?: string;
+  reason?: string;
+  objective?: RsiDecisionObjective;
+  constraints?: RsiDecisionCheck[];
+  violations?: string[];
+  holdout?: {
+    enabled?: boolean;
+    rows?: number;
+    train_rows?: number;
+    min_rows_for_auto_accept?: number;
+  };
+  migration?: Record<string, any>;
+  fitness?: number;
+  auto_accept_eligible?: boolean;
+}
+
+export interface RsiMetricsDelta extends RsiDeltaSlice {
+  train?: RsiDeltaSlice;
+  holdout?: RsiDeltaSlice;
+  decision_metrics?: RsiDecisionMetrics;
+  objective?: RsiDecisionObjective;
+  validation?: Record<string, any>;
+  reference_thresholds?: Record<string, number>;
+}
+
+export interface RsiDiagnosisCluster {
+  label?: string;
+  root_cause_type?: string;
+  affected_metric?: string;
+  evidence_row_ids?: number[];
+  suggested_lever?: string;
+  severity?: string;
+  size?: number;
+}
+
+export interface RsiDiagnosis {
+  summary?: string;
+  clusters?: RsiDiagnosisCluster[];
+  sample_row_ids?: number[];
+  fallback?: boolean;
+  fallback_reason?: string | null;
+  train_rows?: number;
+  failed_rows?: number;
+  llm_usage?: Record<string, any> | null;
+}
+
+export interface RsiProposal {
+  id: number;
+  loop_id: number;
+  iteration_id: number;
+  target_type: string;
+  target_id?: number | null;
+  field: string;
+  operation: string;
+  before_value?: unknown;
+  after_value?: unknown;
+  rationale?: string | null;
+  evidence?: Record<string, any> | null;
+  risk_level?: string | null;
+  requires_review: boolean;
+  status: string;
+  applied_version_id?: number | null;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  decision_source?: string | null;
+  created_at?: string | null;
+  applied_at?: string | null;
+}
+
+export interface RsiIterationBrief {
+  id: number;
+  loop_id: number;
+  iteration_index: number;
+  status: string;
+  baseline_eval_id?: number | null;
+  candidate_eval_id?: number | null;
+  proposal_count: number;
+  objective_gain?: number | null;
+  holdout_pass_rate?: number | null;
+  cost?: Record<string, any> | null;
+  decision?: string | null;
+  decision_reason?: string | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface RsiIteration extends RsiIterationBrief {
+  diagnosis?: RsiDiagnosis | null;
+  metrics?: RsiMetricsDelta | null;
+  cost?: Record<string, any> | null;
+  proposals: RsiProposal[];
+}
+
+export interface RsiLoop {
+  id: number;
+  name: string;
+  description?: string | null;
+  status: string;
+  baseline_eval_id: number;
+  dataset_id: number;
+  scenario_id: number;
+  llm_config_id: number;
+  proposer_llm_config_id?: number | null;
+  evaluation_mode?: string | null;
+  endpoint_target_id?: number | null;
+  target_config?: Record<string, any> | null;
+  response_mapping?: Record<string, any> | null;
+  result_save_mode?: string | null;
+  objective_metric?: string | null;
+  objective_target?: number | null;
+  objective_mode?: string | null;
+  reference_thresholds?: Record<string, number> | null;
+  holdout_config?: Record<string, any> | null;
+  acceptance_policy?: Record<string, any> | null;
+  budget?: RsiBudget | null;
+  usage?: RsiUsage | null;
+  current_iteration?: number;
+  best_iteration_id?: number | null;
+  final_eval_id?: number | null;
+  auto_apply_low_risk: boolean;
+  error_message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  dataset_name?: string | null;
+  scenario_name?: string | null;
+  llm_model_name?: string | null;
+  proposer_model_name?: string | null;
+  best_gain?: number | null;
+  best_iteration?: RsiIterationBrief | null;
+  latest_iteration?: RsiIterationBrief | null;
+}
+
+export interface RsiConfigVersion {
+  id: number;
+  loop_id?: number | null;
+  iteration_id?: number | null;
+  proposal_id?: number | null;
+  scope: string;
+  scope_id: number;
+  version: number;
+  snapshot?: Record<string, any> | null;
+  patch?: Record<string, any> | null;
+  parent_version_id?: number | null;
+  actor?: string | null;
+  created_at?: string | null;
+  rolled_back_at?: string | null;
+}
+
+export interface RsiLogs {
+  loop_id: number;
+  status: string;
+  current_iteration: number;
+  logs: string;
+}
+
+export interface RsiPreviewResult {
+  success: boolean;
+  message: string;
+  row_id?: number | null;
+  row_data?: Record<string, any> | null;
+  metric_scores?: Record<string, any>;
+  is_pass?: boolean | null;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface RsiHardCaseResult {
+  dataset_id: number;
+  dataset_name: string;
+  created_rows: number;
+  skipped_row_ids: number[];
+}
+
+export interface RsiCreatePayload {
+  name: string;
+  description?: string | null;
+  baseline_eval_id: number;
+  llm_config_id?: number | null;
+  proposer_llm_config_id?: number | null;
+  objective_metric?: string | null;
+  objective_mode?: 'metric_mean' | 'reference_pass_rate';
+  objective_target?: number | null;
+  budget?: RsiBudget;
+  holdout?: {
+    holdout_ratio?: number;
+    min_rows?: number;
+    min_rows_for_auto_accept?: number;
+  };
+  auto_apply_low_risk?: boolean;
+}
+
 export interface RagDatasetJob {
   id: number;
   name: string;

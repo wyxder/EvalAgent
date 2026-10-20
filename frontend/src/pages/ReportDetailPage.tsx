@@ -6,6 +6,7 @@ import {
 import {
   CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined,
   ArrowLeftOutlined, QuestionCircleOutlined, InfoCircleOutlined, DatabaseOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { ReportSummary, EvalRowResult, PaginatedResponse, Dataset, DatasetRow, EvalTask, ReportCompareResponse, ReportCompareRowItem } from '../types';
@@ -513,7 +514,18 @@ const ReportDetailPage: React.FC = () => {
           </Space>
         </Card>
 
-        <Card title="基本信息">
+        <Card
+          title="基本信息"
+          extra={
+            <Button
+              icon={<ExperimentOutlined />}
+              disabled={evalTask?.status !== 'completed'}
+              onClick={() => navigate(`/rsi?create=1&baseline_eval_id=${evalId}`)}
+            >
+              发起自进化
+            </Button>
+          }
+        >
           {datasetChangedAfterRun && (
             <Alert
               type="warning"
@@ -749,7 +761,7 @@ const ReportDetailPage: React.FC = () => {
               <Input
                 placeholder="用逗号分隔，例如：检索漏召回, 回答不完整"
                 value={manualReview.manual_tags}
-                onChange={(e) => setManualReview((prev) => ({ ...prev, manual_tags: e.target.value }))}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setManualReview((prev) => ({ ...prev, manual_tags: e.target.value }))}
               />
             </div>
             <div>
@@ -758,7 +770,7 @@ const ReportDetailPage: React.FC = () => {
                 autoSize={{ minRows: 3, maxRows: 6 }}
                 placeholder="写下为什么自动结论不可信，或这条样本后续要怎么处理"
                 value={manualReview.manual_note}
-                onChange={(e) => setManualReview((prev) => ({ ...prev, manual_note: e.target.value }))}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setManualReview((prev) => ({ ...prev, manual_note: e.target.value }))}
               />
             </div>
             <Space align="center">

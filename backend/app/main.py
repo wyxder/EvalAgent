@@ -132,6 +132,7 @@ from app.api.evaluation import router as evaluation_router
 from app.api.report import router as report_router
 from app.api.rag_dataset_job import router as rag_dataset_job_router
 from app.api.blind_test import router as blind_test_router
+from app.api.rsi import router as rsi_router
 
 app.include_router(llm_config_router, prefix="/api")
 app.include_router(dataset_router, prefix="/api")
@@ -142,6 +143,7 @@ app.include_router(evaluation_router, prefix="/api")
 app.include_router(report_router, prefix="/api")
 app.include_router(rag_dataset_job_router, prefix="/api")
 app.include_router(blind_test_router, prefix="/api")
+app.include_router(rsi_router, prefix="/api")
 
 # Static file serving for uploads
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

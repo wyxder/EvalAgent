@@ -10,6 +10,7 @@ from app.models.rag_dataset_job import (
     RagDatasetChunk,
     RagDatasetSample,
 )
+from app.models.rsi import RsiLoop, RsiIteration, RsiProposal, RsiConfigVersion
 
 __all__ = [
     "LLMConfig",
@@ -27,4 +28,8 @@ __all__ = [
     "RagDatasetDocument",
     "RagDatasetChunk",
     "RagDatasetSample",
+    "RsiLoop",
+    "RsiIteration",
+    "RsiProposal",
+    "RsiConfigVersion",
 ]

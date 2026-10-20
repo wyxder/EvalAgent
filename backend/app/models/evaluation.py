@@ -28,6 +28,10 @@ class EvalTask(Base):
     target_config = Column(JSON, nullable=True)
     response_mapping = Column(JSON, nullable=True)
     result_save_mode = Column(String(50), default="task_only")
+    # RSI audit links use plain integers on purpose: a real FK here would make
+    # eval_tasks <-> rsi_loops a DDL cycle that SQLite cannot add via ALTER.
+    rsi_loop_id = Column(Integer, nullable=True, index=True)
+    rsi_iteration_id = Column(Integer, nullable=True, index=True)
     logs = Column(Text, default="")
 
     dataset = relationship("Dataset")

@@ -13,6 +13,7 @@ import {
   ExperimentOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 
 import ExperimentWorkbenchPage from './pages/ExperimentWorkbenchPage';
@@ -27,6 +28,8 @@ import EvaluationPage from './pages/EvaluationPage';
 import ReportListPage from './pages/ReportListPage';
 import ReportDetailPage from './pages/ReportDetailPage';
 import BlindTestPage from './pages/BlindTestPage';
+import RsiLoopListPage from './pages/RsiLoopListPage';
+import RsiLoopDetailPage from './pages/RsiLoopDetailPage';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -50,6 +53,14 @@ const menuItems = [
       { key: '/endpoint-targets', icon: <ApiOutlined />, label: '被测接口' },
       { key: '/scenarios', icon: <AppstoreOutlined />, label: '场景管理' },
       { key: '/llm-configs', icon: <SettingOutlined />, label: 'LLM配置' },
+    ],
+  },
+  {
+    key: 'evolution',
+    type: 'group' as const,
+    label: '自进化',
+    children: [
+      { key: '/rsi', icon: <RobotOutlined />, label: 'RSI 自进化' },
     ],
   },
   {
@@ -129,6 +140,8 @@ const App: React.FC = () => {
               <Route path="/scenarios" element={<ScenarioListPage />} />
               <Route path="/evaluations" element={<EvaluationPage />} />
               <Route path="/blind-tests" element={<BlindTestPage />} />
+              <Route path="/rsi" element={<RsiLoopListPage />} />
+              <Route path="/rsi/:id" element={<RsiLoopDetailPage />} />
               <Route path="/reports" element={<ReportListPage />} />
               <Route path="/reports/:id" element={<ReportDetailPage />} />
               <Route path="*" element={<Navigate to="/workbench" replace />} />
