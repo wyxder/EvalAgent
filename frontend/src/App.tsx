@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Layout, Menu, Space, Typography } from 'antd';
+import { Button, Layout, Menu, Space, Typography, Tooltip } from 'antd';
 import {
   SettingOutlined,
   DatabaseOutlined,
@@ -14,6 +14,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   RobotOutlined,
+  GlobalOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons';
 
 import ExperimentWorkbenchPage from './pages/ExperimentWorkbenchPage';
@@ -30,6 +32,8 @@ import ReportDetailPage from './pages/ReportDetailPage';
 import BlindTestPage from './pages/BlindTestPage';
 import RsiLoopListPage from './pages/RsiLoopListPage';
 import RsiLoopDetailPage from './pages/RsiLoopDetailPage';
+import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -80,21 +84,64 @@ const App: React.FC = () => {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
+  // If user is accessing the landing page or login page directly, render them standalone
+  const isLanding = location.pathname === '/' || location.pathname === '/landing';
+  const isLogin = location.pathname === '/login';
+
+  if (isLanding) {
+    return <LandingPage />;
+  }
+
+  if (isLogin) {
+    return <LoginPage />;
+  }
+
   const selectedKey = '/' + location.pathname.split('/')[1];
 
   return (
     <Layout className="app-shell">
-      <Header className="app-header">
-        <Space size={12} align="center">
-          <div className="brand-mark">
-            <ExperimentOutlined />
+      <Header className="app-header" style={{ justifyContent: 'space-between' }}>
+        <Tooltip title="点击返回官网宣传页" placement="bottomLeft">
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onClick={() => navigate('/')}
+          >
+            <div className="brand-mark">
+              <ExperimentOutlined />
+            </div>
+            <div>
+              <Title level={4} className="brand-title">
+                AI 评测平台
+              </Title>
+              <div className="brand-subtitle">RAG / Agent / 多轮对话评测中枢</div>
+            </div>
           </div>
-          <div>
-            <Title level={4} className="brand-title">
-              AI 评测平台
-            </Title>
-            <div className="brand-subtitle">RAG / Agent / 多轮对话评测中枢</div>
-          </div>
+        </Tooltip>
+
+        <Space size={12}>
+          <Button
+            icon={<GlobalOutlined />}
+            size="small"
+            onClick={() => navigate('/')}
+            style={{ borderRadius: 6 }}
+          >
+            官网宣传页
+          </Button>
+          <Button
+            type="text"
+            size="small"
+            icon={<LogoutOutlined />}
+            onClick={() => navigate('/login')}
+            style={{ color: '#64748b' }}
+          >
+            切换身份
+          </Button>
         </Space>
       </Header>
       <Layout className="app-body">

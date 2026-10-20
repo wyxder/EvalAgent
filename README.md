@@ -141,9 +141,18 @@ ai-eval-platform/
 │   │       ├── rag_dataset_job.py         # 合成任务 DTO
 │   │       ├── rsi.py                     # RSI 循环、提案、迭代与版本 DTO
 │   │       ├── scenario.py                # 场景配置 DTO
-│   │       └── sensitive.py               # 密码与 API Key 脱敏过滤器
-│   └── tests/                             # 后端自动化测试套件
-├── frontend/                              # 前端工程源码根目录
+│   └── tests/                             # 后端自动化测试套件 (全量 101 个用例全部通过)
+│       ├── conftest.py                    # SQLite 测试夹具与依赖覆盖
+│       ├── test_evaluation.py             # 核心评测、指标加权与场景快照测试
+│       ├── test_dataset.py                # 数据集与样本行 CRUD 测试
+│       ├── test_blind_test.py             # 双盲测试与投票聚合测试
+│       ├── test_rag_dataset_job.py        # RAG 文档切片与问答生成测试
+│       ├── test_rsi_patch.py              # RSI 白名单校验与漂移防护测试
+│       ├── test_rsi_diagnosis.py          # 失败聚类与降级测试
+│       ├── test_rsi_policy.py             # 验收策略、Holdout 切分与门禁测试
+│       ├── test_rsi_engine.py             # RSI 状态机、预算与超时恢复测试
+│       ├── test_rsi_api.py                # RSI RESTful API 路由与契约测试
+│       └── test_rsi_rollback.py           # 版本不可变、回滚一致性与血缘测试
 │   ├── index.html                         # 前端单页应用 HTML 模板入口
 │   ├── package.json                       # 前端项目依赖与脚本定义
 │   ├── tsconfig.json                      # TypeScript 编译配置文件
@@ -355,6 +364,46 @@ flowchart TD
 
 ---
 
+### 8. 评测驱动的配置自进化 (RSI - Recursive Self-Improvement)
+
+平台实现业界领先的 **“评测驱动的配置自进化” (RSI)** 闭环。以一次已完成的真实评测为基线，自动化执行失败归因、白名单补丁提案、影子回归与验收判定，并在人工审批后写回场景配置与留存版本快照，支持一键回滚。
+
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         RSI 循环 (Recursive Evolution)                   │
+│                                                                          │
+│  ① 基线评测 ──► ② 失败归因 ──► ③ 优化提案 ──► ④ 白名单/漂移静态校验      │
+│      ▲              │              │                   │                 │
+│      │         (只读 train)         │                   ▼                 │
+│      │              │              │            ⑤ 沙盒单行预览 (P1)      │
+│      │              │              │                   │                 │
+│      │              │              │                   ▼                 │
+│      │              │              └────────► ⑥ 影子回归评估 (全量/Holdout)│
+│      │              │                                       │            │
+│      │              │                                       ▼            │
+│      │              │                          ⑦ 冻结参考阈值验收判定    │
+│      │              │                                       │            │
+│      │              │                          ┌────────────┴─────────┐  │
+│      │              │                          ▼                      ▼  │
+│      │              │                    人工审批 / 确认采纳       驳回/终止轮次│
+│      │              │                          │                         │
+│      │              └──────────────────► ⑧ 版本快照 + 写回 + 一键回滚     │
+│      │                                         │                         │
+│      └────────────── 下一轮以 candidate 为基线 ◄─────────────────────────┘
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+- **三大防自欺安全红线**：
+  1. **阈值无关验收**：验收目标采用创建循环时冻结的 `reference_thresholds` 计算样本通过率或目标指标均值，杜绝“通过降低 `pass_threshold` 虚假抬高通过率”。
+  2. **Holdout 严格隔离**：采用样本稳定哈希切分，失败归因与提案 Prompt **只读取 Train 切片**，Holdout 数据绝不进入提示词上下文，防止测试集泄漏。
+  3. **漂移检测与先快照后落库**：提案校验时强制比对 `before_value` 是否与当前数据库实体一致；写回前先在 `rsi_config_versions` 创建不可变快照，支持任意历史版本一键回滚。
+- **P1 级效率与诊断增强**：
+  - **沙盒单行试跑 (`/preview`)**：复用底层评测调试引擎，一键预览单条样本在应用候选补丁后的出分与 Reason，降低全量回归试错成本。
+  - **Hard-case 派生数据集 (`/hard-cases`)**：自动将当轮未通过用例提炼为派生数据集（只追加、不改原表、自动剔除 holdout），形成困难样本库持续复测。
+  - **指标演化折线图**：多轮次各维度增益、通过率演化趋势及 LLM 消耗量可视化大盘。
+
+---
+
 ## ⚙️ 部署指南
 
 ### 1. 环境准备
@@ -389,6 +438,17 @@ cp .env.example .env
 | `RUN_EVAL_ON_CREATE`| Boolean | `true` | 创建评测任务后是否立即后台异步开始评测 |
 | `LLM_TEMPERATURE` | Float | `0.01` | Judge 评测时的采样温度（建议极低值以保证打分确定性） |
 | `LLM_MAX_TOKENS` | Integer | `1024` | Judge 评分输出的最大 Token 数量 |
+| `RSI_ENABLED` | Boolean | `true` | RSI 自进化模块总开关，关闭后 `/api/rsi/*` 返回 403 并隐藏前端菜单 |
+| `RSI_MAX_ITERATIONS` | Integer | `3` | 单个自进化循环的最大迭代轮次数上限 |
+| `RSI_MAX_ROWS_PER_ITERATION`| Integer | `50` | 每轮迭代用于归因裁剪与预算估算的最大样本行数 |
+| `RSI_MAX_LLM_CALLS` | Integer | `300` | 单个自进化循环消耗的 LLM 调用次数安全预算熔断阈值 |
+| `RSI_MAX_MINUTES` | Integer | `45` | 单个自进化循环的最大运行时长超时阈值（超期自动标记 failed） |
+| `RSI_MAX_PROPOSALS_PER_ITERATION` | Integer | `3` | 每轮迭代生成的最大候选 Patch 提案数 |
+| `RSI_HOLDOUT_RATIO` | Float | `0.3` | Holdout 验证集哈希抽样比例（0~0.5） |
+| `RSI_MIN_OBJECTIVE_GAIN` | Float | `0.03` | 验收建议通过所需的最小目标指标增益幅度 |
+| `RSI_MAX_METRIC_DROP` | Float | `0.02` | 受保护指标允许的最大允许降幅门禁（防退化） |
+| `RSI_AUTO_APPLY_LOW_RISK`| Boolean | `false` | 是否允许低风险且满足严格 Holdout 样本量的补丁自动写回采纳 |
+| `RSI_PROPOSER_TEMPERATURE` | Float | `0.2` | 提案生成大模型的采样温度（兼顾稳定性与探索性） |
 
 ---
 
@@ -623,6 +683,28 @@ server {
 | `GET` | `/api/blind-tests/{id}/rows` | 分页拉取双盲对比条目（已脱敏与随机置乱） | Query: `page`, `page_size`, `status` | 用户提问、随机映射后的输出 A 与输出 B |
 | `POST` | `/api/blind-tests/{id}/rows/{row_id}/vote` | 提交测试人员的偏好投票 | `winner` (`target_a`/`target_b`/`tie`/`both_bad`), `comment` | 记录投票结果，更新任务胜率统计 |
 | `POST` | `/api/blind-tests/{id}/cancel` | 终止盲测任务 | 路径参数: `id` | 状态更新为 `cancelled` |
+
+---
+
+### 9. RSI 自进化与配置版本管理 (`/api/rsi`)
+
+| 请求方式 | 接口端点 | 描述说明 | 核心入参 / 请求体 | 核心响应说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/rsi/loops` | 获取自进化循环任务列表 | Query: `status`, `scenario_id`, `keyword` | 返回循环概要、当前轮次、最优增益与状态 |
+| `POST` | `/api/rsi/loops` | 发起创建新的自进化循环 | `baseline_eval_id`, `objective_metric`, `budget`, `holdout` | 继承基线配置并冻结参考阈值，返回新建 loop |
+| `GET` | `/api/rsi/loops/{id}` | 查询单个循环详情与预算使用 | 路径参数: `id` | 详细配置、各轮次简报、最佳迭代与消耗统计 |
+| `POST` | `/api/rsi/loops/{id}/start` | 启动后台循环调度执行器 | 路径参数: `id` | 校验单场景独占锁后异步触发后台 Worker |
+| `POST` | `/api/rsi/loops/{id}/cancel` | 取消自进化循环任务 | 路径参数: `id` | 同步取消底层候选评测任务并更新状态 |
+| `GET` | `/api/rsi/loops/{id}/logs` | 增量拉取自进化实时控制台日志 | Query: `offset` (字符偏移量) | 返回最新日志文本与当前最新 offset |
+| `GET` | `/api/rsi/loops/{id}/iterations` | 查询该循环的所有迭代轮次列表 | 路径参数: `id` | 轮次索引、验收判定、目标增益与决策原因 |
+| `GET` | `/api/rsi/iterations/{id}` | 获取单轮迭代明细与双评估对比 | 路径参数: `id` | 归因失败簇、结构化提案列表与全量/Holdout Delta |
+| `POST` | `/api/rsi/iterations/{id}/approve` | 人工审批采纳本轮提案并写回配置 | `resume` (审批后是否立即自动继续下一轮) | 校验漂移后生成不可变版本快照并写回实体 |
+| `POST` | `/api/rsi/iterations/{id}/reject` | 驳回本轮所有提案 | `reason` (驳回说明) | 提案标记 rejected 并累加连续无增益轮次 |
+| `POST` | `/api/rsi/loops/{id}/rollback` | 一键回滚场景配置 | `version_id` 或 `iteration_id` | 还原实体至指定快照字段，追加生成新版本 |
+| `POST` | `/api/rsi/proposals/{id}/preview` | 单样本沙盒原地调试预览打分 | `row_id` (可选指定数据行，默认首条失败行) | 原地运行调试评测，返回打分、Judge 理由与 Trace |
+| `POST` | `/api/rsi/loops/{id}/hard-cases` | 将本轮失败样本沉淀为派生数据集 | `name` (新数据集名，可选) | 自动排除 holdout，创建标记 _rsi_origin 的新数据集 |
+| `GET` | `/api/rsi/configs/{scope}/{scope_id}/versions` | 查询指定配置实体的版本变迁历史 | 路径参数: `scope`, `scope_id` | 返回各版本快照、变更 Patch、操作者与时间 |
+| `POST` | `/api/rsi/configs/versions/{id}/restore` | 将实体回退至任意历史版本 | 路径参数: `id` | 将指定版本快照写回实体，生成新版本保持血缘 |
 
 ---
 
