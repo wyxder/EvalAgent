@@ -28,9 +28,16 @@ backend/venv/
 uploads/
 
 # Frontend
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo
+
+# OS / temp
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
 
 # IDE
 .idea/
