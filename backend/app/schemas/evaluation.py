@@ -66,6 +66,8 @@ class EvalTaskBrief(BaseModel):
     target_config: Optional[Dict[str, Any]] = None
     response_mapping: Optional[Dict[str, Any]] = None
     result_save_mode: Optional[str] = "task_only"
+    token_usage: Optional[Dict[str, Any]] = None
+    prompt_version: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

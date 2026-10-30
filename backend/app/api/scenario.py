@@ -3,12 +3,30 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.audit import record_audit
 from app.core.database import get_db
 from app.models.scenario import EvalScenario, ScenarioMetric
 from app.models.metric_definition import MetricDefinition
 from app.schemas.scenario import ScenarioCreate, ScenarioResponse, ScenarioUpdate
 
 router = APIRouter(prefix="/scenarios", tags=["Scenarios"])
+
+
+def _scenario_snapshot(scenario: EvalScenario) -> dict:
+    return {
+        "name": scenario.name,
+        "scene_type": scenario.scene_type,
+        "sample_type": scenario.sample_type,
+        "metrics": [
+            {
+                "metric_definition_id": item.metric_definition_id,
+                "weight": item.weight,
+                "pass_threshold": item.pass_threshold,
+                "has_prompt_override": bool(item.prompt_override),
+            }
+            for item in (scenario.metrics or [])
+        ],
+    }
 
 
 def _load_scenario_with_metrics(query):
@@ -90,6 +108,13 @@ def create_scenario(payload: ScenarioCreate, db: Session = Depends(get_db)):
         )
         .first()
     )
+    record_audit(
+        db,
+        action="scenario.create",
+        target_type="scenario",
+        target_id=scenario.id,
+        after_value=_scenario_snapshot(scenario),
+    )
     return scenario
 
 
@@ -110,6 +135,7 @@ def update_scenario(
             status_code=400, detail="Cannot edit a preset scenario"
         )
 
+    before_value = _scenario_snapshot(scenario)
     scenario.name = payload.name
     scenario.description = payload.description
     scenario.scene_type = payload.scene_type
@@ -122,6 +148,14 @@ def update_scenario(
             db.query(EvalScenario).filter(EvalScenario.id == scenario_id)
         )
         .first()
+    )
+    record_audit(
+        db,
+        action="scenario.update",
+        target_type="scenario",
+        target_id=scenario_id,
+        before_value=before_value,
+        after_value=_scenario_snapshot(scenario),
     )
     return scenario
 
@@ -150,6 +184,14 @@ def delete_scenario(scenario_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=400, detail="Cannot delete a preset scenario"
         )
+    before_value = _scenario_snapshot(scenario)
     db.delete(scenario)
     db.commit()
+    record_audit(
+        db,
+        action="scenario.delete",
+        target_type="scenario",
+        target_id=scenario_id,
+        before_value=before_value,
+    )
     return None

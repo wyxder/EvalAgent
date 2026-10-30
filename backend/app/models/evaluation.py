@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, Boolean, Text, DateTime, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -10,17 +10,17 @@ class EvalTask(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(200), nullable=False)
-    dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=False)
-    scenario_id = Column(Integer, ForeignKey("eval_scenarios.id"), nullable=False)
-    llm_config_id = Column(Integer, ForeignKey("llm_configs.id"), nullable=False)
-    status = Column(String(50), default="pending")
+    dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=False, index=True)
+    scenario_id = Column(Integer, ForeignKey("eval_scenarios.id"), nullable=False, index=True)
+    llm_config_id = Column(Integer, ForeignKey("llm_configs.id"), nullable=False, index=True)
+    status = Column(String(50), default="pending", index=True)
     progress = Column(Float, default=0.0)
     total_rows = Column(Integer, nullable=True)
     completed_rows = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=func.now(), index=True)
     summary_scores = Column(JSON, nullable=True)
     scenario_snapshot = Column(JSON, nullable=True)
     evaluation_mode = Column(String(50), default="offline")
@@ -28,6 +28,9 @@ class EvalTask(Base):
     target_config = Column(JSON, nullable=True)
     response_mapping = Column(JSON, nullable=True)
     result_save_mode = Column(String(50), default="task_only")
+    # Token/cost accounting (A1) and Judge prompt version (A3).
+    token_usage = Column(JSON, nullable=True)
+    prompt_version = Column(String(50), nullable=True)
     # RSI audit links use plain integers on purpose: a real FK here would make
     # eval_tasks <-> rsi_loops a DDL cycle that SQLite cannot add via ALTER.
     rsi_loop_id = Column(Integer, nullable=True, index=True)
@@ -43,10 +46,15 @@ class EvalTask(Base):
 
 class EvalRowResult(Base):
     __tablename__ = "eval_row_results"
+    __table_args__ = (
+        Index("ix_eval_row_results_task_row", "eval_task_id", "row_index"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    eval_task_id = Column(Integer, ForeignKey("eval_tasks.id", ondelete="CASCADE"), nullable=False)
-    dataset_row_id = Column(Integer, ForeignKey("dataset_rows.id"), nullable=False)
+    eval_task_id = Column(
+        Integer, ForeignKey("eval_tasks.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    dataset_row_id = Column(Integer, ForeignKey("dataset_rows.id"), nullable=False, index=True)
     row_index = Column(Integer, nullable=False)
     metric_scores = Column(JSON, nullable=True)
     endpoint_trace = Column(JSON, nullable=True)

@@ -11,6 +11,7 @@ from app.models.rag_dataset_job import (
     RagDatasetSample,
 )
 from app.models.rsi import RsiLoop, RsiIteration, RsiProposal, RsiConfigVersion
+from app.models.ops import AuditLog, EvalMetricCache
 
 __all__ = [
     "LLMConfig",
@@ -32,4 +33,6 @@ __all__ = [
     "RsiIteration",
     "RsiProposal",
     "RsiConfigVersion",
+    "AuditLog",
+    "EvalMetricCache",
 ]

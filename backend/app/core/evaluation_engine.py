@@ -16,7 +16,9 @@ import time
 import typing as t
 from datetime import datetime, timezone
 
+from app.core.config import settings
 from app.core.endpoint_eval import extract_eval_fields, invoke_endpoint
+from app.core.metric_cache import compute_cache_key, get_cached, store_cache
 from app.core.prompt_manager import (
     ASPECT_CRITIC_INSTRUCTION,
     BUILTIN_LLM_METRIC_SPECS,
@@ -25,6 +27,7 @@ from app.core.prompt_manager import (
     JUDGE_SYSTEM_PROMPT,
     NAMED_LLM_METRIC_SPECS,
     NUMERIC_SCORE_INSTRUCTION,
+    PROMPT_VERSION,
     extract_prompt_variables,
     render_prompt,
     resolve_prompt_variable,
@@ -51,22 +54,110 @@ class _MetricResult:
 
 
 class OpenAIJudgeClient:
-    """OpenAI-compatible JSON judge client used by native LLM metrics."""
+    """OpenAI-compatible JSON judge client used by native LLM metrics.
+
+    Hardening applied here:
+    * bounded concurrency (``JUDGE_MAX_CONCURRENCY``) to protect provider quota;
+    * exponential backoff retries on transient errors / 429;
+    * optional fallback model (``LLM_FALLBACK_MODEL``) when the primary keeps failing;
+    * token usage accumulation for cost accounting (A1).
+    """
+
+    requires_judge = True
 
     def __init__(self, llm_config):
         from openai import AsyncOpenAI
 
         self.model = llm_config.model_name
+        self.primary_model = llm_config.model_name
+        self.fallback_model = (settings.LLM_FALLBACK_MODEL or "").strip()
         self.temperature = llm_config.temperature if llm_config.temperature is not None else 0.01
         self.max_tokens = min(int(llm_config.max_tokens or 1024), 1200)
         self.last_messages: list[dict[str, str]] | None = None
         self.last_raw_response: str | None = None
+        self.max_concurrency = max(1, int(settings.JUDGE_MAX_CONCURRENCY))
+        self.max_retries = max(0, int(settings.JUDGE_MAX_RETRIES))
+        self._semaphore = asyncio.Semaphore(self.max_concurrency)
+        self.usage = {
+            "calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "retries": 0,
+            "fallback_used": False,
+        }
         self.client = AsyncOpenAI(
             base_url=llm_config.api_base_url,
             api_key=llm_config.api_key,
             timeout=180,
-            max_retries=2,
+            max_retries=0,
         )
+
+    def _record_usage(self, response) -> None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        prompt_tokens = int(
+            getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", 0) or 0
+        )
+        completion_tokens = int(
+            getattr(usage, "completion_tokens", None)
+            or getattr(usage, "output_tokens", 0)
+            or 0
+        )
+        total_tokens = int(getattr(usage, "total_tokens", 0) or (prompt_tokens + completion_tokens))
+        self.usage["calls"] += 1
+        self.usage["prompt_tokens"] += prompt_tokens
+        self.usage["completion_tokens"] += completion_tokens
+        self.usage["total_tokens"] += total_tokens
+
+    async def _create(self, messages: list[dict[str, str]], json_mode: bool) -> t.Any:
+        kwargs: dict[str, t.Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with self._semaphore:
+                    response = await self.client.chat.completions.create(**kwargs)
+                self._record_usage(response)
+                return response
+            except Exception as exc:
+                last_error = exc
+                if attempt >= self.max_retries:
+                    break
+                self.usage["retries"] += 1
+                delay = min(2 ** attempt, 8)
+                logger.warning(
+                    "Judge call failed (%s), retrying in %ss (attempt %d/%d)",
+                    exc,
+                    delay,
+                    attempt + 1,
+                    self.max_retries,
+                )
+                await asyncio.sleep(delay)
+
+        if self.fallback_model and self.model != self.fallback_model:
+            logger.warning(
+                "Switching Judge model to fallback %s after repeated failures",
+                self.fallback_model,
+            )
+            self.model = self.fallback_model
+            self.usage["fallback_used"] = True
+            async with self._semaphore:
+                response = await self.client.chat.completions.create(
+                    **{**kwargs, "model": self.fallback_model}
+                )
+            self._record_usage(response)
+            return response
+
+        raise last_error if last_error is not None else RuntimeError("Judge call failed")
 
     async def judge_json(self, payload: dict[str, t.Any]) -> dict[str, t.Any]:
         user_prompt = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -82,29 +173,39 @@ class OpenAIJudgeClient:
         )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"},
-            )
+            response = await self._create(messages, json_mode=True)
         except Exception as exc:
             logger.warning("Judge JSON mode failed, retrying without response_format: %s", exc)
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
+            response = await self._create(messages, json_mode=False)
 
         content = response.choices[0].message.content or ""
         self.last_raw_response = content
         return _parse_json_object(content)
 
+    def usage_summary(self) -> dict[str, t.Any]:
+        """Token totals plus an estimated cost using configured per-1k prices."""
+
+        prompt_tokens = self.usage["prompt_tokens"]
+        completion_tokens = self.usage["completion_tokens"]
+        estimated_cost = round(
+            prompt_tokens / 1000 * settings.LLM_PRICE_INPUT_PER_1K
+            + completion_tokens / 1000 * settings.LLM_PRICE_OUTPUT_PER_1K,
+            6,
+        )
+        return {
+            **self.usage,
+            "model": self.model,
+            "primary_model": self.primary_model,
+            "prompt_version": PROMPT_VERSION,
+            "estimated_cost": estimated_cost,
+            "currency": "CNY",
+        }
+
 
 class NativeBuiltinLLMMetric:
     """Built-in metric implemented by our own judge prompt."""
+
+    requires_judge = True
 
     def __init__(
         self,
@@ -158,6 +259,8 @@ class NativeBuiltinLLMMetric:
 
 class NativePromptMetric:
     """User-configured prompt metric implemented by the platform judge."""
+
+    requires_judge = True
 
     def __init__(
         self,
@@ -571,6 +674,52 @@ def diagnose_metric_prompt(
     return warnings
 
 
+def _metric_cache_criteria(metric_instance) -> str:
+    """Stable fingerprint material describing what a metric asks the Judge."""
+
+    criteria = getattr(metric_instance, "criteria", None)
+    if criteria:
+        return str(criteria)
+    override = getattr(metric_instance, "prompt_override", None)
+    if override:
+        return str(override)
+    config = getattr(metric_instance, "config", None) or {}
+    return str(
+        config.get("prompt")
+        or config.get("description")
+        or config.get("definition")
+        or ""
+    )
+
+
+async def _score_metric_with_samples(metric_instance, row_data: dict, judge_client):
+    """Run a Judge-backed metric once or N times and aggregate the scores (A6)."""
+
+    samples = max(1, min(int(settings.JUDGE_SAMPLES or 1), 5))
+    if not getattr(metric_instance, "requires_judge", False) or samples == 1:
+        return await metric_instance.ascore(row_data, judge_client)
+
+    results = []
+    for _ in range(samples):
+        results.append(await metric_instance.ascore(row_data, judge_client))
+
+    numeric = [
+        float(item.value)
+        for item in results
+        if isinstance(item.value, (int, float)) and not isinstance(item.value, bool)
+    ]
+    if not numeric:
+        return results[0]
+
+    mean = round(sum(numeric) / len(numeric), 4)
+    spread = round(max(numeric) - min(numeric), 4)
+    reason = (
+        f"重复采样 {len(numeric)} 次，均值 {mean}，极差 {spread}。"
+        f"{str(results[0].reason or '')[:200]}"
+    )
+    return _MetricResult(mean, reason)
+
+
 async def run_evaluation(task_id: int, session_factory) -> None:
     """
     Execute a full evaluation run for the given EvalTask.
@@ -585,6 +734,7 @@ async def run_evaluation(task_id: int, session_factory) -> None:
     from app.models.scenario import ScenarioMetric
 
     db = session_factory()
+    judge_client: OpenAIJudgeClient | None = None
 
     def _log(task_obj, msg: str):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -636,12 +786,14 @@ async def run_evaluation(task_id: int, session_factory) -> None:
         task.completed_rows = 0
         task.progress = 0.0
         task.started_at = datetime.now(timezone.utc)
+        task.prompt_version = PROMPT_VERSION
         _log(task, "========== 评测任务启动 ==========")
         _log(task, f"任务: {task.name} (ID={task_id})")
         _log(task, f"数据集: {dataset.name} ({total_rows} 条)")
         _log(task, f"场景: {scenario_snapshot.get('name') or scenario.name}")
         _log(task, f"评测模式: {'接口实时评测' if evaluation_mode == 'endpoint' else '已有结果评测'}")
         _log(task, f"评判 LLM: {llm_config.model_name} @ {llm_config.api_base_url}")
+        _log(task, f"Prompt 版本: {PROMPT_VERSION}")
         _log(task, f"指标数: {len(scenario_metrics)} 个")
         _log(task, f"进度: 0/{total_rows} (0%)")
         db.commit()
@@ -745,33 +897,94 @@ async def run_evaluation(task_id: int, session_factory) -> None:
                     _log(task, f"  ✗ {row_error[:200]}")
                     db.commit()
 
-            for metric_name, metric_instance, _sm in metrics:
-                if row_error and metric_scores.get(metric_name):
-                    continue
-                db.refresh(task)
-                if task.status == "cancelled":
-                    _log(task, f"⚠ 用户取消评测，当前行停止在指标 [{metric_name}]")
-                    db.commit()
-                    break
+            pending_metrics = [
+                (metric_name, metric_instance)
+                for metric_name, metric_instance, _sm in metrics
+                if not (row_error and metric_scores.get(metric_name))
+            ]
+            if pending_metrics:
+                metric_semaphore = asyncio.Semaphore(
+                    max(1, int(settings.EVAL_METRIC_CONCURRENCY))
+                )
 
-                _log(task, f"  ▸ 评测指标 [{metric_name}]...")
+                async def run_metric(metric_name, metric_instance):
+                    async with metric_semaphore:
+                        cache_key = None
+                        if settings.EVAL_CACHE_ENABLED and getattr(
+                            metric_instance, "requires_judge", False
+                        ):
+                            cache_key = compute_cache_key(
+                                row_data=row_data,
+                                metric_name=metric_name,
+                                model_name=judge_client.model,
+                                prompt_version=PROMPT_VERSION,
+                                criteria=_metric_cache_criteria(metric_instance),
+                            )
+                            cached = get_cached(db, cache_key)
+                            if cached is not None:
+                                return (
+                                    metric_name,
+                                    {
+                                        "score": cached["score"],
+                                        "reason": cached["reason"],
+                                        "cached": True,
+                                    },
+                                    None,
+                                )
+                        try:
+                            result = await _score_metric_with_samples(
+                                metric_instance, row_data, judge_client
+                            )
+                            value = result.value
+                            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                                value = round(float(value), 4)
+                            payload = {
+                                "score": value,
+                                "reason": str(result.reason or "")[:800],
+                            }
+                            return metric_name, payload, cache_key if value is not None else None
+                        except Exception as exc:
+                            return (
+                                metric_name,
+                                {"score": None, "reason": str(exc)[:800]},
+                                None,
+                            )
+
+                _log(
+                    task,
+                    f"  ▸ 并发评分 {len(pending_metrics)} 个指标 "
+                    f"(并发度 {settings.EVAL_METRIC_CONCURRENCY})",
+                )
                 db.commit()
-                try:
-                    result = await metric_instance.ascore(row_data, judge_client)
-                    val = result.value
-                    if isinstance(val, (int, float)):
-                        val = round(float(val), 4)
-                    reason = str(result.reason or "")[:800]
-                    metric_scores[metric_name] = {"score": val, "reason": reason}
-                    if val is None:
-                        _log(task, f"  ✗ [{metric_name}] 无法评分: {reason[:200]}")
+                outcomes = await asyncio.gather(
+                    *(
+                        run_metric(metric_name, metric_instance)
+                        for metric_name, metric_instance in pending_metrics
+                    )
+                )
+                for metric_name, payload, cache_key in outcomes:
+                    metric_scores[metric_name] = payload
+                    if payload.get("cached"):
+                        _log(task, f"  ✓ [{metric_name}] = {payload['score']} (缓存命中)")
+                    elif payload["score"] is None:
+                        _log(
+                            task,
+                            f"  ✗ [{metric_name}] 失败或无法评分: "
+                            f"{str(payload['reason'])[:200]}",
+                        )
                     else:
-                        _log(task, f"  ✓ [{metric_name}] = {val}")
-                except Exception as exc:
-                    metric_scores[metric_name] = {"score": None, "reason": str(exc)[:800]}
-                    _log(task, f"  ✗ [{metric_name}] 失败: {str(exc)[:200]}")
+                        _log(task, f"  ✓ [{metric_name}] = {payload['score']}")
+                    if cache_key:
+                        store_cache(
+                            db,
+                            cache_key=cache_key,
+                            metric_name=metric_name,
+                            model_name=judge_client.model,
+                            prompt_version=PROMPT_VERSION,
+                            score=payload["score"],
+                            reason=payload["reason"],
+                        )
                 db.commit()
-                await asyncio.sleep(0)
 
             db.refresh(task)
             if task.status == "cancelled":
@@ -820,13 +1033,32 @@ async def run_evaluation(task_id: int, session_factory) -> None:
             task.finished_at = datetime.now(timezone.utc)
             task.summary_scores = summary_scores
             task.progress = 1.0
+            task.token_usage = judge_client.usage_summary()
+            task.prompt_version = PROMPT_VERSION
 
             pass_count = sum(1 for s in all_row_scores if _determine_pass(s, metrics))
             _log(task, f"通过: {pass_count}/{total_rows} ({round(pass_count / total_rows * 100, 1)}%)")
             for m_name, info in summary_scores.items():
                 mean = info.get("mean")
                 pr = info.get("pass_rate")
-                _log(task, f"  {m_name}: 均值={mean}, 通过率={pr}")
+                ci = info.get("ci_95")
+                ci_text = f", 95%CI=[{ci[0]}, {ci[1]}]" if ci else ""
+                _log(task, f"  {m_name}: 均值={mean}, 通过率={pr}{ci_text}")
+            usage = task.token_usage
+            _log(
+                task,
+                "Token 用量: 调用={} 输入={} 输出={} 合计={} 重试={} 估算成本={} {}".format(
+                    usage.get("calls"),
+                    usage.get("prompt_tokens"),
+                    usage.get("completion_tokens"),
+                    usage.get("total_tokens"),
+                    usage.get("retries"),
+                    usage.get("estimated_cost"),
+                    usage.get("currency"),
+                ),
+            )
+            if usage.get("fallback_used"):
+                _log(task, f"⚠ 评判模型已切换至备用模型: {usage.get('model')}")
             _log(task, "========== 评测完成 ==========")
             db.commit()
 
@@ -839,6 +1071,8 @@ async def run_evaluation(task_id: int, session_factory) -> None:
                 task.status = "failed"
                 task.error_message = str(exc)[:2000]
                 task.finished_at = datetime.now(timezone.utc)
+                if judge_client is not None:
+                    task.token_usage = judge_client.usage_summary()
                 _log(task, f"✗✗✗ 评测失败: {str(exc)[:500]}")
                 _log(task, "========== 评测异常终止 ==========")
                 db.commit()
@@ -934,6 +1168,47 @@ def _determine_pass(metric_scores: dict, metrics: list) -> bool:
     return True
 
 
+def _bootstrap_ci(values: list[float], confidence: float = 0.95) -> tuple[float, float] | None:
+    """Percentile bootstrap confidence interval for the sample mean (A12).
+
+    Returns ``None`` when there are too few samples for a meaningful interval or
+    when the bootstrap iteration budget is disabled.
+    """
+
+    n = len(values)
+    iters = max(0, int(getattr(settings, "SUMMARY_BOOTSTRAP_ITERS", 0) or 0))
+    if n < 2 or iters <= 0:
+        return None
+
+    alpha = (1.0 - confidence) / 2.0
+    try:
+        import numpy as np
+
+        samples = np.asarray(values, dtype=float)
+        rng = np.random.default_rng(seed=20261030)
+        means = np.empty(iters, dtype=float)
+        # Chunked resampling keeps peak memory bounded for large iteration counts.
+        chunk = max(1, min(iters, 256))
+        filled = 0
+        while filled < iters:
+            size = min(chunk, iters - filled)
+            idx = rng.integers(0, n, size=(size, n))
+            means[filled : filled + size] = samples[idx].mean(axis=1)
+            filled += size
+        low, high = np.quantile(means, [alpha, 1.0 - alpha])
+        return float(low), float(high)
+    except Exception:
+        import random
+
+        rng = random.Random(20261030)
+        means = sorted(
+            sum(values[rng.randrange(n)] for _ in range(n)) / n for _ in range(iters)
+        )
+        low_idx = int(alpha * iters)
+        high_idx = min(iters - 1, int((1.0 - alpha) * iters))
+        return float(means[low_idx]), float(means[high_idx])
+
+
 def _compute_summary_scores(all_row_scores: list[dict[str, t.Any]], metrics: list) -> dict:
     """
     Compute per-metric aggregate statistics across all evaluated rows.
@@ -969,6 +1244,7 @@ def _compute_summary_scores(all_row_scores: list[dict[str, t.Any]], metrics: lis
             else:
                 numeric_values.append(float(score))
 
+        ci_95 = None
         if numeric_values:
             mean_val = sum(numeric_values) / len(numeric_values)
             min_val = min(numeric_values)
@@ -978,6 +1254,7 @@ def _compute_summary_scores(all_row_scores: list[dict[str, t.Any]], metrics: lis
             effective_threshold = threshold if threshold is not None else DEFAULT_SUMMARY_PASS_THRESHOLD
             pass_count = sum(1 for v in numeric_values if v >= effective_threshold)
             pass_rate = pass_count / len(numeric_values)
+            ci_95 = _bootstrap_ci(numeric_values)
         else:
             mean_val = None
             min_val = None
@@ -989,6 +1266,9 @@ def _compute_summary_scores(all_row_scores: list[dict[str, t.Any]], metrics: lis
             "min": round(min_val, 4) if min_val is not None else None,
             "max": round(max_val, 4) if max_val is not None else None,
             "pass_rate": round(pass_rate, 4) if pass_rate is not None else None,
+            "ci_95": (
+                [round(ci_95[0], 4), round(ci_95[1], 4)] if ci_95 is not None else None
+            ),
             "pass_threshold": thresholds.get(metric_name),
             "effective_pass_threshold": (
                 thresholds.get(metric_name)

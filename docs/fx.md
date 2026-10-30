@@ -60,6 +60,25 @@
 - **不建议**自研组件库：Ant Design 已覆盖中后台场景，自研收益低。
 - **建议优先做 F1/F2**：这两项直接影响后续所有迭代速度，属于"越晚做越贵"的技术债。
 
+### 2.1 实施状态（本轮已完成）
+
+| # | 建议项 | 状态 | 落地位置 / 说明 |
+|---|--------|------|-----------------|
+| F1 | 全局错误处理 | **已实现** | `frontend/src/services/api.ts` 新增响应拦截器：30s 超时、`X-Request-Id` 透传、`ApiError` 规范化；仅对网络错误 / 超时 / 401 / 5xx 做全局提示，业务 4xx 交由页面自行处理，避免重复弹窗 |
+| F2 | 巨型组件拆分 | 未实施 | 属结构性重构（`ExperimentWorkbenchPage.tsx` 1804 行），需回归测试覆盖，风险高于本轮范围，建议单独排期 |
+| F3 | 路由懒加载 | **已实现** | `frontend/src/App.tsx` 全部页面改为 `React.lazy(() => import(...))`，`Suspense` + 加载态兜底；构建产物已按路由拆出独立 chunk |
+| F4 | ErrorBoundary | **已实现** | 新增 `frontend/src/components/ErrorBoundary.tsx`：`getDerivedStateFromError` + `componentDidCatch`，展示错误 ID、支持重试/刷新；Landing/Login 与主内容区分别包裹 |
+| F5 | 轮询开销大 | **已实现** | 后端 `backend/app/api/evaluation.py` 新增 `GET /api/evaluations/{task_id}/stream`（`text/event-stream`，终态自动结束）；前端新增 `services/stream.ts`，`EvaluationPage` 改为 **SSE 优先 + 连续失败降级为 1s 轮询** |
+| F6 | OpenAPI 类型生成 | 未实施 | 需引入 `openapi-typescript` 依赖并改造 `types` 目录，会与现有手写类型大规模冲突，建议独立迭代 |
+| F7 | 大表格性能 | **已实现** | `DatasetDetailPage.tsx` 表格在行数 > 50 时启用 `virtual` 虚拟滚动与固定纵向滚动区 |
+| F8 | 操作审计展示 | 未实施 | 需新增前端页面并复用后端 RSI 版本表，属新功能而非完善项，建议随后端版本管理一起排期 |
+| F9 | 无 i18n | 未实施 | 当前无出海需求，硬编码中文不构成实际问题，优先级维持 P2 |
+| F10 | 前端可观测 | **已实现（基础版）** | `services/api.ts` 提供 `trackEvent` / `getTrackedEvents`（内存环形缓冲 200 条），关键操作可埋点，请求 ID 已可与后端日志串联 |
+
+**验证结论**：`npm run build` 通过（3122 modules，退出码 0），仅保留 Vite 常规的 chunk > 500 kB 提示；F1/F3/F4/F5/F7/F10 均已进入运行时路径。
+
+**未实施项的共同原因**：F2/F6/F8/F9 均涉及新增依赖或结构性重构，与"低风险、可快速验证"的本轮目标冲突，故保留为后续排期，不在文档中虚报为已完成。
+
 ---
 
 ## 三、后端完善建议
@@ -87,6 +106,27 @@
 - **B1 + B2 + B3 必须一起做**：认证要落库、迁移要建表、索引要随迁移走，分开做会返工。
 - **B6 可以延后**：单机线程模型在团队规模小的时候够用，等出现"多实例/任务重试"需求再上队列，避免过早复杂化。
 
+### 3.1 实施状态（本轮已完成）
+
+| # | 建议 | 状态 | 落地说明 |
+|---|------|------|---------|
+| B1 | 认证与授权 | 未实施 | 需前端登录页、会话存储与全部写接口改造联动，属独立迭代 |
+| B2 | 数据库迁移 | 未实施 | 环境未安装 `alembic`；保留 `create_all` + `ALTER TABLE` 补列，并新增索引自愈 |
+| B3 | 索引缺失 | **已实现** | `EvalTask`/`EvalRowResult`/`DatasetRow`/`ScenarioMetric` 增加 `index=True` 与组合索引；`core/database.py` 新增 `_ensure_indexes()`，用 `CREATE INDEX IF NOT EXISTS` 为既有库补索引 |
+| B4 | 评测串行执行 | **已实现（指标级并发）** | `run_evaluation` 指标循环改为 `asyncio.Semaphore(EVAL_METRIC_CONCURRENCY)` + `gather` 有界并发，写放大降为每行一次 `db.commit()`；未做行级并发以规避 SQLite 多会话写冲突 |
+| B5 | 切 PostgreSQL | 未实施 | 属部署形态变更，代码已使用 SQLAlchemy JSON 字段，切换成本主要在运维 |
+| B6 | 队列化执行 | 未实施 | 需引入 worker 进程与任务状态同步，超出本轮范围 |
+| B7 | 错误契约统一 | **已实现** | 新增 `core/errors.py`：`{code, message, detail, request_id}`，覆盖 HTTPException（含 404/403）、422 校验错误、500 未捕获异常；保留 `detail` 兼容前端 |
+| B8 | 审计日志 | **已实现** | 新增 `models/ops.py::AuditLog` 与 `core/audit.py`；LLM 配置、场景的增删改自动记录前后值（剔除 API Key）；新增 `GET /api/audit-logs` 分页查询 |
+| B9 | 上传校验 | **已实现** | 新增 `core/upload_guard.py`：扩展名白名单、文件名清洗、大小上限（`MAX_UPLOAD_MB`）；RAG 上传接入并映射 413/415/422 |
+| B10 | API 版本化 | 未实施 | 全量前端调用需同步改前缀，收益有限，保持 `/api/*` |
+| B11 | 游标分页 | 未实施 | 当前数据量级 offset 分页无性能问题，避免提前复杂化 |
+| B12 | 结构化日志 | **已实现** | 新增 `core/observability.py`：`request_id` ContextVar、访问日志、`JsonLogFormatter`；`main.py` 统一 `configure_logging(LOG_LEVEL, LOG_JSON)` 并回显 `X-Request-Id` |
+| B13 | 就绪探针 | **已实现** | 新增 `GET /api/ready`：检查 DB `SELECT 1`、LLM 配置/`LLM_API_KEY`、上传目录，未就绪返回 503 |
+| B14 | 限流 | **已实现** | 新增 `core/rate_limit.py::RateLimitMiddleware`：滑动窗口按 IP 限制重任务 POST（`RATE_LIMIT_HEAVY_PER_MIN`），超限返回 429 + `Retry-After` |
+
+**说明**：B3/B4/B7/B8/B9/B12/B13/B14 均已落地并通过导入/接口自检；B1/B2/B5/B6/B10/B11 因涉及登录体系、部署形态或迁移依赖，保留排期。
+
 ---
 
 ## 四、AI 服务完善建议
@@ -112,6 +152,25 @@
 - **A5 黄金集是可信度的关键**：现在能证明"机制正确"，但证明不了"评分准确"；这是从项目走向产品的分水岭。
 - **A9 多模态不建议现在做**：项目当前定位是文本评测，贸然加视觉会让指标体系和样本模型复杂度翻倍，且没有真实业务驱动。
 - **A11 插件化要晚做**：只有确认"指标会持续大量新增"时才值得抽象，否则是过度设计。
+
+### 4.1 实施状态（本轮已完成）
+
+| # | 建议 | 状态 | 落地说明 |
+|---|------|------|---------|
+| A1 | 成本计量 | **已实现** | `OpenAIJudgeClient` 累计 `calls/prompt_tokens/completion_tokens/total_tokens/retries`，`usage_summary()` 按 `LLM_PRICE_INPUT_PER_1K`/`LLM_PRICE_OUTPUT_PER_1K` 估算成本；结果写入 `EvalTask.token_usage`（含 `model`/`prompt_version`/`estimated_cost`），失败分支也尽量落库 |
+| A2 | 结果缓存 | **已实现** | 新增 `core/metric_cache.py` 与 `models/ops.py::EvalMetricCache`；键为 `row + metric + prompt_version + model + criteria` 的 sha256；`EVAL_CACHE_ENABLED` 可开关，命中直接复用评分与理由 |
+| A3 | Prompt 版本 | **已实现** | `prompt_manager.py` 计算 5 个系统 Prompt 的 sha256 前 8 位为 `PROMPT_VERSION`；写入 `scenario_snapshot`、`EvalTask.prompt_version`、缓存键与 token 汇总 |
+| A4 | 主备模型降级 | **已实现** | 新增 `LLM_FALLBACK_MODEL`：主模型重试耗尽后自动切备用模型并标记 `fallback_used`，失败原因进入日志 |
+| A5 | Judge 校准黄金集 | 未实施 | 需要人工标注数据与长期一致性看板，属数据工程而非代码完善 |
+| A6 | 关键指标重复采样 | **已实现** | 新增 `JUDGE_SAMPLES`：`_score_metric_with_samples()` 重复采样取均值，理由中记录样本数与极差 |
+| A7 | Provider 限流/退避 | **已实现** | `JUDGE_MAX_CONCURRENCY` 信号量 + `JUDGE_MAX_RETRIES` 指数退避（最长 8s），配合全局 `RateLimitMiddleware` 双重保护 |
+| A8 | 检索指标扩展 | 未实施 | 需要 embedding 模型与 rerank 服务依赖，属新指标族 |
+| A9 | 多模态 | 未实施 | 当前定位文本评测，无真实业务驱动 |
+| A10 | 对抗/跨场景集 | 未实施 | 依赖数据集建设与人工构造，非代码可解 |
+| A11 | 指标插件化 | 未实施 | 现有 22 个指标已覆盖文本评测，抽象注册表为时过早 |
+| A12 | 置信区间 | **已实现** | `_compute_summary_scores()` 新增 `_bootstrap_ci()`（优先 numpy，回退纯 Python），为每个数值指标输出 `ci_95`（`SUMMARY_BOOTSTRAP_ITERS` 控制迭代次数） |
+
+**说明**：A1/A2/A3/A4/A6/A7/A12 已落地；A5/A8/A9/A10/A11 依赖外部数据或新依赖，保留为后续排期。
 
 ---
 

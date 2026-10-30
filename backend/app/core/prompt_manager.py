@@ -9,6 +9,7 @@ business scoring standards from being mixed with system output-format rules.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import typing as t
@@ -32,6 +33,29 @@ BUILTIN_LLM_SCORE_INSTRUCTION = (
     "请给出 0 到 1 的浮点分数，并用中文说明理由。理由必须基于 sample 中的具体字段，"
     "指出哪里支持高分或哪里导致扣分。"
 )
+
+
+def _compute_prompt_version() -> str:
+    """Stable fingerprint of the system-owned Judge prompts.
+
+    Changing any output-format instruction automatically changes the version,
+    which invalidates cached scores and makes old results traceable.
+    """
+
+    material = "|".join(
+        [
+            JUDGE_SYSTEM_PROMPT,
+            NUMERIC_SCORE_INSTRUCTION,
+            DISCRETE_SCORE_INSTRUCTION,
+            ASPECT_CRITIC_INSTRUCTION,
+            BUILTIN_LLM_SCORE_INSTRUCTION,
+        ]
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
+    return f"judge-{digest}"
+
+
+PROMPT_VERSION = _compute_prompt_version()
 
 
 # Built-in metric criteria are platform defaults. Scenario-level

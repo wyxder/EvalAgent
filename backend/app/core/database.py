@@ -46,6 +46,8 @@ def ensure_runtime_schema() -> None:
         "result_save_mode": "ALTER TABLE eval_tasks ADD COLUMN result_save_mode VARCHAR(50) DEFAULT 'task_only'",
         "rsi_loop_id": "ALTER TABLE eval_tasks ADD COLUMN rsi_loop_id INTEGER",
         "rsi_iteration_id": "ALTER TABLE eval_tasks ADD COLUMN rsi_iteration_id INTEGER",
+        "token_usage": "ALTER TABLE eval_tasks ADD COLUMN token_usage JSON",
+        "prompt_version": "ALTER TABLE eval_tasks ADD COLUMN prompt_version VARCHAR(50)",
     }
     missing_eval_task_sql = [
         sql for name, sql in eval_task_additions.items() if name not in eval_task_columns
@@ -91,6 +93,40 @@ def ensure_runtime_schema() -> None:
         if "prompt_override" not in scenario_metric_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE scenario_metrics ADD COLUMN prompt_override TEXT"))
+
+    _ensure_indexes(table_names)
+
+
+def _ensure_indexes(table_names: list[str]) -> None:
+    """Create indexes for databases that were built before ``index=True`` columns."""
+
+    index_specs: list[tuple[str, str, str]] = [
+        ("eval_tasks", "ix_eval_tasks_dataset_id", "dataset_id"),
+        ("eval_tasks", "ix_eval_tasks_scenario_id", "scenario_id"),
+        ("eval_tasks", "ix_eval_tasks_llm_config_id", "llm_config_id"),
+        ("eval_tasks", "ix_eval_tasks_status", "status"),
+        ("eval_tasks", "ix_eval_tasks_created_at", "created_at"),
+        ("eval_row_results", "ix_eval_row_results_eval_task_id", "eval_task_id"),
+        ("eval_row_results", "ix_eval_row_results_dataset_row_id", "dataset_row_id"),
+        ("eval_row_results", "ix_eval_row_results_task_row", "eval_task_id, row_index"),
+        ("dataset_rows", "ix_dataset_rows_dataset_id", "dataset_id"),
+        ("dataset_rows", "ix_dataset_rows_dataset_row", "dataset_id, row_index"),
+        ("scenario_metrics", "ix_scenario_metrics_scenario_id", "scenario_id"),
+        (
+            "scenario_metrics",
+            "ix_scenario_metrics_metric_definition_id",
+            "metric_definition_id",
+        ),
+    ]
+    with engine.begin() as connection:
+        for table, index_name, columns in index_specs:
+            if table not in table_names:
+                continue
+            connection.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({columns})"
+                )
+            )
 
 
 def get_db():

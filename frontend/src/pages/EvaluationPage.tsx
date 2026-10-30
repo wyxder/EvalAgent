@@ -32,6 +32,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import type { EvalTask, Dataset, EndpointTarget, EvalScenario, LLMConfig } from '../types';
 import * as api from '../services/api';
+import { subscribeEvaluationStream } from '../services/stream';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -218,27 +219,42 @@ const EvaluationPage: React.FC = () => {
   useEffect(() => {
     if (consoleTaskId === null) return;
 
+    const applyPayload = (data: { logs?: string; status?: string }) => {
+      setConsoleLogs(data.logs || '');
+      setConsoleStatus(data.status || '');
+      if (!userScrolledUp.current && consoleBoxRef.current) {
+        setTimeout(() => {
+          const box = consoleBoxRef.current;
+          if (box) box.scrollTop = box.scrollHeight;
+        }, 100);
+      }
+    };
+
+    // 优先 SSE 推送；连续失败时降级为 1 秒轮询
     const pollLogs = async () => {
       try {
         const data = await api.getEvaluationLogs(consoleTaskId);
-        setConsoleLogs(data.logs || '');
-        setConsoleStatus(data.status || '');
-        if (!userScrolledUp.current && consoleBoxRef.current) {
-          setTimeout(() => {
-            const box = consoleBoxRef.current;
-            if (box) box.scrollTop = box.scrollHeight;
-          }, 100);
-        }
+        applyPayload(data);
       } catch { /* ignore */ }
     };
 
-    pollLogs();
-    consoleTimerRef.current = setInterval(pollLogs, 1000);
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (timer) return;
+      pollLogs();
+      timer = setInterval(pollLogs, 1000);
+    };
+
+    const unsubscribe = subscribeEvaluationStream(consoleTaskId, {
+      onMessage: applyPayload,
+      onFallback: startPolling,
+    });
 
     return () => {
-      if (consoleTimerRef.current) {
-        clearInterval(consoleTimerRef.current);
-        consoleTimerRef.current = null;
+      unsubscribe();
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
       }
     };
   }, [consoleTaskId]);

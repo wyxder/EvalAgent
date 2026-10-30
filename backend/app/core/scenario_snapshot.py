@@ -4,6 +4,8 @@ import copy
 from types import SimpleNamespace
 from typing import Any
 
+from app.core.prompt_manager import PROMPT_VERSION
+
 
 def _metric_override_map(metric_overrides: list[Any] | None) -> dict[int, dict[str, Any]]:
     overrides: dict[int, dict[str, Any]] = {}
@@ -69,6 +71,7 @@ def build_scenario_snapshot(scenario, metric_overrides: list[Any] | None = None)
         "scene_type": scenario.scene_type,
         "sample_type": scenario.sample_type,
         "is_preset": scenario.is_preset,
+        "prompt_version": PROMPT_VERSION,
         "metrics": metrics,
     }
 

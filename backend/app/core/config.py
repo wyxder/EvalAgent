@@ -16,6 +16,24 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.01
     LLM_MAX_TOKENS: int = 1024
 
+    # Observability / API hardening
+    LOG_LEVEL: str = "INFO"
+    LOG_JSON: bool = False
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_HEAVY_PER_MIN: int = 120
+    MAX_UPLOAD_MB: int = 20
+
+    # Evaluation execution / AI service hardening
+    EVAL_METRIC_CONCURRENCY: int = 3
+    EVAL_CACHE_ENABLED: bool = True
+    JUDGE_MAX_CONCURRENCY: int = 4
+    JUDGE_MAX_RETRIES: int = 2
+    JUDGE_SAMPLES: int = 1
+    LLM_FALLBACK_MODEL: str = ""
+    LLM_PRICE_INPUT_PER_1K: float = 0.0
+    LLM_PRICE_OUTPUT_PER_1K: float = 0.0
+    SUMMARY_BOOTSTRAP_ITERS: int = 1000
+
     # RSI (evaluation-driven config self-evolution). Defaults keep the feature
     # usable on a fresh install while every safety knob stays configurable.
     RSI_ENABLED: bool = True

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -22,9 +22,12 @@ class Dataset(Base):
 
 class DatasetRow(Base):
     __tablename__ = "dataset_rows"
+    __table_args__ = (
+        Index("ix_dataset_rows_dataset_row", "dataset_id", "row_index"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
+    dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True)
     row_index = Column(Integer, nullable=False)
     data = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=func.now())

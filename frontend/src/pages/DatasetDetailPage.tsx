@@ -335,7 +335,8 @@ const DatasetDetailPage: React.FC = () => {
             ? 'dataset-row-highlight'
             : ''
         )}
-        scroll={{ x: 'max-content' }}
+        scroll={{ x: 'max-content', y: rows.length > 50 ? 560 : undefined }}
+        virtual={rows.length > 50}
         pagination={{
           current: page,
           pageSize: pageSize,

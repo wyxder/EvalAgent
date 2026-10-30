@@ -1,8 +1,10 @@
 import asyncio
+import json
 import threading
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -212,6 +214,54 @@ def get_evaluation_logs(task_id: int, db: Session = Depends(get_db)):
         "completed_rows": task.completed_rows or 0,
         "logs": task.logs or "",
     }
+
+
+@router.get("/{task_id}/stream")
+async def stream_evaluation(task_id: int):
+    """SSE 推送评测进度与日志，替代前端 1 秒轮询。
+
+    - 事件类型统一为 message，data 为 JSON
+    - 任务进入终态（completed / failed / cancelled）后自动结束流
+    - 客户端断开由 StreamingResponse 自动回收生成器
+    """
+
+    async def event_generator():
+        while True:
+            db = SessionLocal()
+            try:
+                task = db.query(EvalTask).filter(EvalTask.id == task_id).first()
+                if task is None:
+                    yield _sse_pack({"error": "not_found", "task_id": task_id})
+                    return
+                payload = {
+                    "task_id": task.id,
+                    "status": task.status,
+                    "progress": task.progress or 0,
+                    "total_rows": task.total_rows or 0,
+                    "completed_rows": task.completed_rows or 0,
+                    "logs": task.logs or "",
+                }
+            finally:
+                db.close()
+
+            yield _sse_pack(payload)
+            if payload["status"] in {"completed", "failed", "cancelled"}:
+                return
+            await asyncio.sleep(0.8)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _sse_pack(data: dict) -> str:
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 @router.post("/{task_id}/cancel", response_model=EvalTaskResponse)

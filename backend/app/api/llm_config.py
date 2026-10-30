@@ -4,6 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.audit import record_audit
 from app.core.database import get_db
 from app.models.llm_config import LLMConfig
 from app.schemas.llm_config import (
@@ -14,6 +15,18 @@ from app.schemas.llm_config import (
 )
 
 router = APIRouter(prefix="/llm-configs", tags=["LLM Configs"])
+
+
+def _audit_snapshot(config: LLMConfig) -> dict:
+    """Never persist API keys into the audit trail."""
+
+    return {
+        "name": config.name,
+        "model_name": config.model_name,
+        "api_base_url": config.api_base_url,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+    }
 
 
 def _run_llm_smoke_test(config_like) -> LLMTestResult:
@@ -62,6 +75,13 @@ def create_llm_config(payload: LLMConfigCreate, db: Session = Depends(get_db)):
     db.add(config)
     db.commit()
     db.refresh(config)
+    record_audit(
+        db,
+        action="llm_config.create",
+        target_type="llm_config",
+        target_id=config.id,
+        after_value=_audit_snapshot(config),
+    )
     return LLMConfigResponse.from_orm_with_mask(config)
 
 
@@ -82,11 +102,21 @@ def update_llm_config(
         raise HTTPException(status_code=404, detail="LLM config not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    before_value = _audit_snapshot(config)
     for key, value in update_data.items():
         setattr(config, key, value)
 
     db.commit()
     db.refresh(config)
+    record_audit(
+        db,
+        action="llm_config.update",
+        target_type="llm_config",
+        target_id=config.id,
+        before_value=before_value,
+        after_value=_audit_snapshot(config),
+        note=", ".join(sorted(update_data.keys())),
+    )
     return LLMConfigResponse.from_orm_with_mask(config)
 
 
@@ -95,8 +125,17 @@ def delete_llm_config(config_id: int, db: Session = Depends(get_db)):
     config = db.query(LLMConfig).filter(LLMConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="LLM config not found")
+    target_id = config.id
+    before_value = _audit_snapshot(config)
     db.delete(config)
     db.commit()
+    record_audit(
+        db,
+        action="llm_config.delete",
+        target_type="llm_config",
+        target_id=target_id,
+        before_value=before_value,
+    )
     return None
 
 

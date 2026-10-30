@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Layout, Menu, Space, Typography, Tooltip } from 'antd';
+import { Button, Layout, Menu, Space, Spin, Typography, Tooltip } from 'antd';
 import {
   SettingOutlined,
   DatabaseOutlined,
@@ -18,22 +18,25 @@ import {
   LogoutOutlined,
 } from '@ant-design/icons';
 
-import ExperimentWorkbenchPage from './pages/ExperimentWorkbenchPage';
-import LLMConfigPage from './pages/LLMConfigPage';
-import DatasetListPage from './pages/DatasetListPage';
-import DatasetDetailPage from './pages/DatasetDetailPage';
-import RagDatasetBuilderPage from './pages/RagDatasetBuilderPage';
-import ScenarioListPage from './pages/ScenarioListPage';
-import MetricListPage from './pages/MetricListPage';
-import EndpointTargetPage from './pages/EndpointTargetPage';
-import EvaluationPage from './pages/EvaluationPage';
-import ReportListPage from './pages/ReportListPage';
-import ReportDetailPage from './pages/ReportDetailPage';
-import BlindTestPage from './pages/BlindTestPage';
-import RsiLoopListPage from './pages/RsiLoopListPage';
-import RsiLoopDetailPage from './pages/RsiLoopDetailPage';
-import LandingPage from './pages/LandingPage';
-import LoginPage from './pages/LoginPage';
+import ErrorBoundary from './components/ErrorBoundary';
+
+// 路由级懒加载：首屏只加载当前页面，降低初始包体
+const ExperimentWorkbenchPage = React.lazy(() => import('./pages/ExperimentWorkbenchPage'));
+const LLMConfigPage = React.lazy(() => import('./pages/LLMConfigPage'));
+const DatasetListPage = React.lazy(() => import('./pages/DatasetListPage'));
+const DatasetDetailPage = React.lazy(() => import('./pages/DatasetDetailPage'));
+const RagDatasetBuilderPage = React.lazy(() => import('./pages/RagDatasetBuilderPage'));
+const ScenarioListPage = React.lazy(() => import('./pages/ScenarioListPage'));
+const MetricListPage = React.lazy(() => import('./pages/MetricListPage'));
+const EndpointTargetPage = React.lazy(() => import('./pages/EndpointTargetPage'));
+const EvaluationPage = React.lazy(() => import('./pages/EvaluationPage'));
+const ReportListPage = React.lazy(() => import('./pages/ReportListPage'));
+const ReportDetailPage = React.lazy(() => import('./pages/ReportDetailPage'));
+const BlindTestPage = React.lazy(() => import('./pages/BlindTestPage'));
+const RsiLoopListPage = React.lazy(() => import('./pages/RsiLoopListPage'));
+const RsiLoopDetailPage = React.lazy(() => import('./pages/RsiLoopDetailPage'));
+const LandingPage = React.lazy(() => import('./pages/LandingPage'));
+const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -88,12 +91,31 @@ const App: React.FC = () => {
   const isLanding = location.pathname === '/' || location.pathname === '/landing';
   const isLogin = location.pathname === '/login';
 
+  const pageFallback = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '96px 0' }}>
+      <Spin size="large" />
+      <span style={{ color: '#64748b' }}>页面加载中...</span>
+    </div>
+  );
+
   if (isLanding) {
-    return <LandingPage />;
+    return (
+      <ErrorBoundary title="官网页面加载异常">
+        <Suspense fallback={pageFallback}>
+          <LandingPage />
+        </Suspense>
+      </ErrorBoundary>
+    );
   }
 
   if (isLogin) {
-    return <LoginPage />;
+    return (
+      <ErrorBoundary title="登录页面加载异常">
+        <Suspense fallback={pageFallback}>
+          <LoginPage />
+        </Suspense>
+      </ErrorBoundary>
+    );
   }
 
   const selectedKey = '/' + location.pathname.split('/')[1];
@@ -176,23 +198,27 @@ const App: React.FC = () => {
         </Sider>
         <Layout className="workspace-layout">
           <Content className="workspace-content">
-            <Routes>
-              <Route path="/workbench" element={<ExperimentWorkbenchPage />} />
-              <Route path="/llm-configs" element={<LLMConfigPage />} />
-              <Route path="/datasets" element={<DatasetListPage />} />
-              <Route path="/datasets/rag-builder" element={<RagDatasetBuilderPage />} />
-              <Route path="/datasets/:id" element={<DatasetDetailPage />} />
-              <Route path="/metrics" element={<MetricListPage />} />
-              <Route path="/endpoint-targets" element={<EndpointTargetPage />} />
-              <Route path="/scenarios" element={<ScenarioListPage />} />
-              <Route path="/evaluations" element={<EvaluationPage />} />
-              <Route path="/blind-tests" element={<BlindTestPage />} />
-              <Route path="/rsi" element={<RsiLoopListPage />} />
-              <Route path="/rsi/:id" element={<RsiLoopDetailPage />} />
-              <Route path="/reports" element={<ReportListPage />} />
-              <Route path="/reports/:id" element={<ReportDetailPage />} />
-              <Route path="*" element={<Navigate to="/workbench" replace />} />
-            </Routes>
+            <ErrorBoundary title="当前页面渲染异常">
+              <Suspense fallback={pageFallback}>
+                <Routes>
+                  <Route path="/workbench" element={<ExperimentWorkbenchPage />} />
+                  <Route path="/llm-configs" element={<LLMConfigPage />} />
+                  <Route path="/datasets" element={<DatasetListPage />} />
+                  <Route path="/datasets/rag-builder" element={<RagDatasetBuilderPage />} />
+                  <Route path="/datasets/:id" element={<DatasetDetailPage />} />
+                  <Route path="/metrics" element={<MetricListPage />} />
+                  <Route path="/endpoint-targets" element={<EndpointTargetPage />} />
+                  <Route path="/scenarios" element={<ScenarioListPage />} />
+                  <Route path="/evaluations" element={<EvaluationPage />} />
+                  <Route path="/blind-tests" element={<BlindTestPage />} />
+                  <Route path="/rsi" element={<RsiLoopListPage />} />
+                  <Route path="/rsi/:id" element={<RsiLoopDetailPage />} />
+                  <Route path="/reports" element={<ReportListPage />} />
+                  <Route path="/reports/:id" element={<ReportDetailPage />} />
+                  <Route path="*" element={<Navigate to="/workbench" replace />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
           </Content>
         </Layout>
       </Layout>

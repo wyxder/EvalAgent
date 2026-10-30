@@ -24,8 +24,8 @@ class ScenarioMetric(Base):
     __tablename__ = "scenario_metrics"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    scenario_id = Column(Integer, ForeignKey("eval_scenarios.id", ondelete="CASCADE"), nullable=False)
-    metric_definition_id = Column(Integer, ForeignKey("metric_definitions.id"), nullable=False)
+    scenario_id = Column(Integer, ForeignKey("eval_scenarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    metric_definition_id = Column(Integer, ForeignKey("metric_definitions.id"), nullable=False, index=True)
     weight = Column(Float, default=1.0)
     pass_threshold = Column(Float, nullable=True)
     prompt_override = Column(Text, nullable=True)

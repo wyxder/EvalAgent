@@ -5,7 +5,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import settings
 from app.core.database import SessionLocal, get_db
+from app.core.upload_guard import validate_upload
 from app.core.rag_dataset_generator import (
     RAG_JOB_TIMEOUT_SECONDS,
     evaluate_chunk_quality,
@@ -208,13 +210,18 @@ def upload_rag_documents(
         if not raw_bytes:
             continue
         try:
-            raw_text = parse_uploaded_file(upload.filename or "unknown.txt", raw_bytes)
+            safe_name = validate_upload(
+                upload.filename or "", len(raw_bytes), settings.MAX_UPLOAD_MB
+            )
+            raw_text = parse_uploaded_file(safe_name, raw_bytes)
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            message = str(exc)
+            status_code = 413 if "过大" in message else 415 if "文件类型" in message else 422
+            raise HTTPException(status_code=status_code, detail=message) from exc
         document = persist_uploaded_document(
             db,
             job,
-            upload.filename or "unknown.txt",
+            safe_name,
             raw_bytes,
             raw_text,
         )

@@ -1,6 +1,122 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
+import { message } from 'antd';
 
-const api = axios.create({ baseURL: '/api' });
+/**
+ * 统一错误结构：
+ * - status：HTTP 状态码（网络错误为 0）
+ * - code：后端错误码或 'NETWORK_ERROR' / 'TIMEOUT'
+ * - requestId：本次请求的追踪 ID，便于对照后端日志
+ * - handled：是否已由全局拦截器提示，业务层可用它避免重复提示
+ */
+export interface ApiError extends Error {
+  status: number;
+  code: string;
+  requestId?: string;
+  detail?: string;
+  handled: boolean;
+}
+
+const api = axios.create({
+  baseURL: '/api',
+  timeout: 30_000,
+});
+
+const requestId = () => {
+  const cryptoObj = typeof globalThis !== 'undefined' ? (globalThis as any).crypto : undefined;
+  if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+
+/** 后端返回的错误详情可能是字符串，也可能是校验错误数组 */
+const normalizeDetail = (detail: unknown): string => {
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => (item && typeof item === 'object' ? (item as any).msg || JSON.stringify(item) : String(item)))
+      .join('; ');
+  }
+  if (detail && typeof detail === 'object') return JSON.stringify(detail);
+  return '';
+};
+
+const toApiError = (error: AxiosError): ApiError => {
+  const status = error.response?.status ?? 0;
+  const data: any = error.response?.data ?? {};
+  const isTimeout = error.code === 'ECONNABORTED';
+  const detail = normalizeDetail(data.detail) || normalizeDetail(data.message);
+
+  let code = data.code || 'UNKNOWN';
+  let text = detail;
+  if (isTimeout) {
+    code = 'TIMEOUT';
+    text = '请求超时，请稍后重试';
+  } else if (!error.response) {
+    code = 'NETWORK_ERROR';
+    text = '网络异常，请检查后端服务是否启动';
+  } else if (status === 401) {
+    code = 'UNAUTHORIZED';
+    text = '登录状态已失效，请重新登录';
+  } else if (status === 403) {
+    code = 'FORBIDDEN';
+    text = detail || '没有权限执行该操作';
+  } else if (status >= 500) {
+    code = 'SERVER_ERROR';
+    text = detail || '服务端异常，请稍后重试';
+  } else if (!text) {
+    text = `请求失败（${status}）`;
+  }
+
+  const apiError = new Error(text) as ApiError;
+  apiError.status = status;
+  apiError.code = code;
+  apiError.detail = detail;
+  apiError.requestId = (error.config?.headers?.['X-Request-Id'] as string) || error.config?.headers?.['x-request-id'] as string;
+  apiError.handled = false;
+  return apiError;
+};
+
+/** 业务层取错误文案：优先用后端 detail，其次用统一兜底文案 */
+export const getErrorMessage = (error: unknown, fallback = '操作失败'): string => {
+  const err = error as ApiError;
+  return err?.message || fallback;
+};
+
+/** 轻量埋点：关键操作留痕，便于排查用户路径（不引入第三方 SDK） */
+const eventBuffer: Array<{ name: string; payload?: Record<string, unknown>; at: number }> = [];
+export const trackEvent = (name: string, payload?: Record<string, unknown>) => {
+  eventBuffer.push({ name, payload, at: Date.now() });
+  if (eventBuffer.length > 200) eventBuffer.shift();
+  if ((import.meta as any).env?.DEV) {
+    // eslint-disable-next-line no-console
+    console.debug('[track]', name, payload);
+  }
+};
+export const getTrackedEvents = () => [...eventBuffer];
+
+api.interceptors.request.use((config) => {
+  const id = requestId();
+  config.headers = config.headers || {};
+  config.headers['X-Request-Id'] = id;
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    const apiError = toApiError(error);
+    // 只对网络/超时/鉴权/服务端异常做全局提示；业务 4xx 交给调用方按场景提示，避免重复弹窗
+    const needsGlobalToast =
+      apiError.code === 'NETWORK_ERROR' ||
+      apiError.code === 'TIMEOUT' ||
+      apiError.status === 401 ||
+      apiError.status >= 500;
+    if (needsGlobalToast) {
+      message.error(apiError.message);
+      apiError.handled = true;
+    }
+    return Promise.reject(apiError);
+  }
+);
 
 // ======================== LLM Config ========================
 
