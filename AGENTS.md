@@ -77,6 +77,20 @@ RSI 是独立于评测引擎的闭环模块，代码分布在：
 | `RSI_MAX_METRIC_DROP` | 受保护指标最大降幅 | 0.02 |
 | `RSI_AUTO_APPLY_LOW_RISK` | 是否允许低风险补丁自动采纳 | false |
 | `RSI_PROPOSER_TEMPERATURE` | 提案模型采样温度 | 0.2 |
+| `LOG_LEVEL` | 应用日志级别 | INFO |
+| `LOG_JSON` | 是否输出 JSON 结构化日志 | false |
+| `RATE_LIMIT_ENABLED` | 是否启用重任务限流中间件 | true |
+| `RATE_LIMIT_HEAVY_PER_MIN` | 重任务 POST 每分钟上限（按 IP） | 120 |
+| `MAX_UPLOAD_MB` | 上传文件大小上限（MB） | 20 |
+| `EVAL_METRIC_CONCURRENCY` | 单行内指标并发度 | 3 |
+| `EVAL_CACHE_ENABLED` | 是否启用 LLM 指标结果缓存 | true |
+| `JUDGE_MAX_CONCURRENCY` | Judge 模型调用并发上限 | 4 |
+| `JUDGE_MAX_RETRIES` | Judge 调用重试次数（429/5xx/网络错误） | 2 |
+| `JUDGE_SAMPLES` | 关键指标重复采样次数 | 1 |
+| `LLM_FALLBACK_MODEL` | 主模型失败后的备用模型（留空不启用） | "" |
+| `LLM_PRICE_INPUT_PER_1K` | 输入 token 每千个价格（用于成本估算） | 0.0 |
+| `LLM_PRICE_OUTPUT_PER_1K` | 输出 token 每千个价格（用于成本估算） | 0.0 |
+| `SUMMARY_BOOTSTRAP_ITERS` | 汇总统计 bootstrap 迭代次数（0 关闭置信区间） | 1000 |
 
 ## 文档与 Git 协作规则
 

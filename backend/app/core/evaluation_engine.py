@@ -45,6 +45,30 @@ _DECIMAL_SCORE_RANGE_RE = re.compile(
 _BINARY_SCORE_RE = re.compile(r"(?:返回|给|打|只能|必须)?\s*0\s*(?:或|/|和|、)\s*1")
 
 
+def _error_status(exc: Exception) -> int | None:
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def _is_auth_error(exc: Exception) -> bool:
+    """401/403 mean the credentials are wrong; retrying cannot help."""
+
+    return _error_status(exc) in (401, 403)
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    """Retry rate limits, 5xx and transport errors; fail fast on other 4xx."""
+
+    status = _error_status(exc)
+    if status is None:
+        return True
+    return status == 429 or status >= 500
+
+
 class _MetricResult:
     """Small result object shared by all metric implementations."""
 
@@ -130,7 +154,11 @@ class OpenAIJudgeClient:
                 return response
             except Exception as exc:
                 last_error = exc
-                if attempt >= self.max_retries:
+                if _is_auth_error(exc):
+                    # Bad key / forbidden: retries and fallback use the same
+                    # credentials, so fail fast instead of burning quota.
+                    raise
+                if not _is_retryable_error(exc) or attempt >= self.max_retries:
                     break
                 self.usage["retries"] += 1
                 delay = min(2 ** attempt, 8)
@@ -175,6 +203,8 @@ class OpenAIJudgeClient:
         try:
             response = await self._create(messages, json_mode=True)
         except Exception as exc:
+            if _is_auth_error(exc):
+                raise
             logger.warning("Judge JSON mode failed, retrying without response_format: %s", exc)
             response = await self._create(messages, json_mode=False)
 

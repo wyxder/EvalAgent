@@ -163,7 +163,7 @@
 | A4 | 主备模型降级 | **已实现** | 新增 `LLM_FALLBACK_MODEL`：主模型重试耗尽后自动切备用模型并标记 `fallback_used`，失败原因进入日志 |
 | A5 | Judge 校准黄金集 | 未实施 | 需要人工标注数据与长期一致性看板，属数据工程而非代码完善 |
 | A6 | 关键指标重复采样 | **已实现** | 新增 `JUDGE_SAMPLES`：`_score_metric_with_samples()` 重复采样取均值，理由中记录样本数与极差 |
-| A7 | Provider 限流/退避 | **已实现** | `JUDGE_MAX_CONCURRENCY` 信号量 + `JUDGE_MAX_RETRIES` 指数退避（最长 8s），配合全局 `RateLimitMiddleware` 双重保护 |
+| A7 | Provider 限流/退避 | **已实现** | `JUDGE_MAX_CONCURRENCY` 信号量 + `JUDGE_MAX_RETRIES` 指数退避（最长 8s），仅对 429/5xx/网络错误重试，401/403 快速失败；配合全局 `RateLimitMiddleware` 双重保护 |
 | A8 | 检索指标扩展 | 未实施 | 需要 embedding 模型与 rerank 服务依赖，属新指标族 |
 | A9 | 多模态 | 未实施 | 当前定位文本评测，无真实业务驱动 |
 | A10 | 对抗/跨场景集 | 未实施 | 依赖数据集建设与人工构造，非代码可解 |
