@@ -1,0 +1,13 @@
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA 路由回退：未匹配的路径统一交给 index.html，避免 React Router 深层路由 404
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
