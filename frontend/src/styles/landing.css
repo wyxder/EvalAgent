@@ -746,57 +746,92 @@
   color: #cbd5e1;
 }
 
-/* Reviews Grid */
-.reviews-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 22px;
+/* Project Capability Marquee */
+.review-marquee {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 8px 0;
+}
+
+.review-marquee::before,
+.review-marquee::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 90px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.review-marquee::before {
+  left: 0;
+  background: linear-gradient(90deg, #090d16 0%, rgba(9, 13, 22, 0) 100%);
+}
+
+.review-marquee::after {
+  right: 0;
+  background: linear-gradient(270deg, #090d16 0%, rgba(9, 13, 22, 0) 100%);
+}
+
+.review-marquee-track {
+  display: flex;
+  gap: 20px;
+  width: max-content;
+  animation: marqueeScroll 55s linear infinite;
+}
+
+/* 第二行反向滚动，形成左右交错效果 */
+.review-marquee-track.reverse {
+  animation-direction: reverse;
+}
+
+.review-marquee-track:hover {
+  animation-play-state: paused;
 }
 
 .review-card {
-  padding: 24px;
+  padding: 22px;
   border-radius: 16px;
   background: rgba(15, 23, 42, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
+}
+
+.review-marquee-card {
+  flex: 0 0 360px;
+  width: 360px;
+}
+
+.review-marquee-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.review-marquee-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  font-size: 15px;
 }
 
 .review-text {
   font-size: 14px;
   line-height: 1.7;
   color: #cbd5e1;
-  margin-bottom: 20px;
-}
-
-.reviewer-profile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.reviewer-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #0284c7, #4f46e5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: #fff;
-}
-
-.reviewer-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.reviewer-role {
-  font-size: 12px;
-  color: #64748b;
+  margin-bottom: 0;
 }
 
 /* Landing Footer */

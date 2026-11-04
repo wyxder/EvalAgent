@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Button,
   Carousel,
-  Collapse,
   Drawer,
   Space,
   Tag,
@@ -21,7 +20,6 @@ import {
   SafetyCertificateOutlined,
   SlidersOutlined,
   TeamOutlined,
-  StarFilled,
   RightOutlined,
   MenuOutlined,
   RocketOutlined,
@@ -50,17 +48,6 @@ const MARQUEE_ITEMS = [
 
 // Carousel showcases
 const CAROUSEL_SLIDES = [
-  {
-    tag: 'RAG 检索增强评估',
-    title: '从文档智能切片到生成忠实度全链路归因',
-    desc: '覆盖 Context Recall / Precision / Relevancy 检索质量，与 Faithfulness / Answer Relevancy 生成质量。强制要求 Judge 模型输出具象评判依据（Reason），让每一分都掷地有据。',
-    visualTitle: 'RAG 评测工作流看板',
-    metrics: [
-      { label: '忠实度 (Faithfulness)', val: '98.5%' },
-      { label: '检索召回率 (Context Recall)', val: '96.2%' },
-      { label: 'HitRate@5 命中率', val: '100%' },
-    ],
-  },
   {
     tag: 'AI Agent 工具链质检',
     title: '复杂任务目标完成度与工具调用死循环排查',
@@ -141,68 +128,60 @@ const MATRIX_ROWS = [
   { feature: '纯自托管与私有化部署支持 (零数据外泄)', evalAgent: true, ragas: true, trulens: true, deepeval: true, promptfoo: true },
 ];
 
-// Reviews
-const REVIEWS = [
+// Project capability highlights (text sourced from README.zh-CN.md)
+const HIGHLIGHT_ROW_TOP = [
   {
-    name: '李晨阳',
-    role: 'AI 技术总监 · 某知名智能客服独角兽',
-    avatar: '李',
-    text: '以往上线新版 RAG 智能体，靠几个实习生盲测，上线后依然频频翻车。EvalAgent 的“具象理由”和“双盲盲测”让我们每次发版都能看到确凿的数据对比，发布信心翻倍！',
-    stars: 5,
+    icon: <DatabaseOutlined />,
+    title: '数据集管理',
+    text: '支持单轮样本、多轮 conversation、RAG contexts、tool calls，以及 CSV / JSON 导入导出。',
   },
   {
-    name: '张浩博',
-    role: '算法专家 · 金融科技实验室',
-    avatar: '张',
-    text: 'RSI 自进化功能简直是神来之笔！以前改完场景指标，根本不敢保证老用例不退化。现在系统自动生成候选 Patch，影子回归通过后才写回，还能一键回滚，工程化做得太扎实了。',
-    stars: 5,
+    icon: <ExperimentOutlined />,
+    title: 'RAG 评测',
+    text: 'Faithfulness、Context Recall、Context Precision、Answer Relevancy、HitRate@K、MRR 等指标覆盖检索与生成质量。',
   },
   {
-    name: 'Sarah Wang',
-    role: '资深全栈工程师 · 跨境出海 AI 团队',
-    avatar: 'S',
-    text: '接入我们现有的 FastAPI 接口只花了几分钟，变量占位符配置非常自然。配合多轮对话的连贯性检测，直接帮我们把长程对话的丢记忆问题降低了 40% 以上。',
-    stars: 5,
+    icon: <RobotOutlined />,
+    title: 'Agent 评测',
+    text: 'Task Completion、Tool Correctness、Argument Correctness、Step Efficiency、Goal Accuracy，覆盖客服与任务执行 Agent。',
+  },
+  {
+    icon: <SwapOutlined />,
+    title: '多轮对话评测',
+    text: 'Topic Adherence、Turn Relevancy、Conversation Completeness、Knowledge Retention、Role Adherence 逐轮检查。',
+  },
+  {
+    icon: <ApiOutlined />,
+    title: '接口实时评测',
+    text: '调用被测 endpoint，抽取 response、contexts、tool calls 后直接评测，无需人工导出结果文件。',
   },
 ];
 
-// FAQs
-const FAQ_ITEMS = [
+const HIGHLIGHT_ROW_BOTTOM = [
   {
-    key: '1',
-    label: '如何开始使用 EvalAgent？',
-    children: (
-      <p style={{ color: '#94a3b8', lineHeight: 1.7, margin: 0 }}>
-        平台开箱即用，已预置通义千问 Qwen Plus 种子配置和 3 个覆盖 RAG、Agent、多轮对话的标准数据集。只需点击右上角「立即体验」即可免密登录并直接进入工作台发起首个评测任务。
-      </p>
-    ),
+    icon: <SyncOutlined />,
+    title: 'RSI 配置自进化',
+    text: '以一次已完成评测为基线，自动做失败归因、白名单补丁提案、影子回归与阈值无关验收，人工审批后写回场景配置。',
   },
   {
-    key: '2',
-    label: '平台支持哪些评测大模型 (Judge Models)？',
-    children: (
-      <p style={{ color: '#94a3b8', lineHeight: 1.7, margin: 0 }}>
-        默认推荐通义千问 Qwen Plus (性价比极高且中文逻辑强)。此外，平台底层采用原生 AsyncOpenAI 协议抽象层，支持无缝切换至 OpenAI GPT-4o、DeepSeek V3 / R1、Claude、智谱 GLM、以及本地 vLLM / Ollama 部署的模型。
-      </p>
-    ),
+    icon: <SafetyCertificateOutlined />,
+    title: '场景快照冻结',
+    text: '评测触发瞬间固化指标、权重、阈值与 Prompt 覆盖，后续修改配置不影响历史任务。',
   },
   {
-    key: '3',
-    label: '什么是「评测驱动的配置自进化 (RSI)」？',
-    children: (
-      <p style={{ color: '#94a3b8', lineHeight: 1.7, margin: 0 }}>
-        RSI (Recursive Self-Improvement) 是平台独创的递归优化引擎。它利用单次评测的失败行作为证据，自动归因聚类并由提案大模型生成合规的配置变更补丁（Patch）。通过影子评测任务在隔离环境中验证提升，经人工确认后安全写回，并保留版本快照以供任意时刻一键回滚。
-      </p>
-    ),
+    icon: <SwapOutlined />,
+    title: '人工盲测',
+    text: '支持 LLM vs LLM、Endpoint vs Endpoint、LLM vs Endpoint 主观对比，抹除标识并乱序置乱。',
   },
   {
-    key: '4',
-    label: '企业私有化部署是否会产生数据外泄风险？',
-    children: (
-      <p style={{ color: '#94a3b8', lineHeight: 1.7, margin: 0 }}>
-        绝不外泄。EvalAgent 采用纯自托管架构，所有评测样本、接口 Trace、指标配置均保存在您指定的本地 SQLite 或内网 PostgreSQL 数据库中。大模型调用也完全支持指向企业内部网关或私有化 Ollama/vLLM 实例。
-      </p>
-    ),
+    icon: <BarChartOutlined />,
+    title: '报告与复核',
+    text: '产出总体通过率、指标摘要、逐条 Judge 理由、人工复核状态，以及用于回归检查的报告对比。',
+  },
+  {
+    icon: <SlidersOutlined />,
+    title: 'OpenAI 兼容 Judge',
+    text: '默认 DashScope Qwen Plus，可替换为任意 OpenAI 兼容 Chat 模型或私有兼容网关。',
   },
 ];
 
@@ -252,10 +231,7 @@ export const LandingPage: React.FC = () => {
             会员计划
           </span>
           <span className="landing-nav-link" onClick={() => scrollTo('reviews')}>
-            用户评价
-          </span>
-          <span className="landing-nav-link" onClick={() => scrollTo('faq')}>
-            常见问题
+            项目能力
           </span>
         </div>
 
@@ -315,9 +291,6 @@ export const LandingPage: React.FC = () => {
           </Button>
           <Button type="text" block style={{ textAlign: 'left', color: '#cbd5e1' }} onClick={() => scrollTo('pricing')}>
             会员计划
-          </Button>
-          <Button type="text" block style={{ textAlign: 'left', color: '#cbd5e1' }} onClick={() => scrollTo('faq')}>
-            常见问题
           </Button>
           <Button
             type="primary"
@@ -890,56 +863,42 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Customer Reviews */}
+      {/* Project Capability Marquee */}
       <section id="reviews" className="landing-section">
         <div className="section-header">
-          <div className="section-tag">真实用户口碑</div>
-          <h2 className="section-title">来自一线 AI 工程师与算法团队的声音</h2>
+          <div className="section-tag">项目能力实录</div>
+          <h2 className="section-title">来自当前项目文档与实现的能力清单</h2>
           <p className="section-subtitle">
-            听听正在使用 EvalAgent 把控大模型质量的技术 Leader 们怎么说。
+            以下内容取自项目 README 与已实现功能，如实展示平台当前具备的评测能力，不含虚构用户评价。
           </p>
         </div>
 
-        <div className="reviews-grid">
-          {REVIEWS.map((rev, idx) => (
-            <div key={idx} className="review-card">
-              <div>
-                <Space style={{ marginBottom: 12 }}>
-                  {[...Array(rev.stars)].map((_, sIdx) => (
-                    <StarFilled key={sIdx} style={{ color: '#f59e0b', fontSize: 15 }} />
-                  ))}
-                </Space>
-                <div className="review-text">“{rev.text}”</div>
-              </div>
-
-              <div className="reviewer-profile">
-                <div className="reviewer-avatar">{rev.avatar}</div>
-                <div>
-                  <div className="reviewer-name">{rev.name}</div>
-                  <div className="reviewer-role">{rev.role}</div>
+        <div className="review-marquee">
+          {[HIGHLIGHT_ROW_TOP, HIGHLIGHT_ROW_BOTTOM].map((row, rowIdx) => (
+            <div
+              key={rowIdx}
+              className={`review-marquee-track${rowIdx === 1 ? ' reverse' : ''}`}
+            >
+              {[...row, ...row].map((item, idx) => (
+                <div key={idx} className="review-card review-marquee-card">
+                  <div className="review-marquee-head">
+                    <span className="review-marquee-icon">{item.icon}</span>
+                    <Text strong style={{ color: '#fff', fontSize: 14 }}>
+                      {item.title}
+                    </Text>
+                    <Tag
+                      color="cyan"
+                      style={{ marginInlineStart: 'auto', border: 'none', borderRadius: 6, fontSize: 11 }}
+                    >
+                      README
+                    </Tag>
+                  </div>
+                  <div className="review-text">{item.text}</div>
                 </div>
-              </div>
+              ))}
             </div>
           ))}
         </div>
-      </section>
-
-      {/* FAQ Accordion */}
-      <section id="faq" className="landing-section" style={{ maxWidth: 880 }}>
-        <div className="section-header">
-          <div className="section-tag">常见解答</div>
-          <h2 className="section-title">常见问题与解答</h2>
-          <p className="section-subtitle">
-            关于环境配置、模型支持及落地集成的疑问，我们为您梳理好了答案。
-          </p>
-        </div>
-
-        <Collapse
-          items={FAQ_ITEMS}
-          bordered={false}
-          style={{ background: 'transparent' }}
-          className="landing-faq-collapse"
-        />
       </section>
 
       {/* Pre-footer Call to Action */}

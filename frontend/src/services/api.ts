@@ -16,8 +16,11 @@ export interface ApiError extends Error {
   handled: boolean;
 }
 
+const rawBaseURL = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
+
 const api = axios.create({
-  baseURL: '/api',
+  // 部署时可通过 VITE_API_BASE_URL 指向独立后端；默认走同源 /api（本地由 Vite 代理）
+  baseURL: rawBaseURL ? rawBaseURL.replace(/\/$/, '') : '/api',
   timeout: 30_000,
 });
 
@@ -204,7 +207,12 @@ export const testEndpointTarget = (id: number, data: any) => api.post(`/endpoint
 
 // ======================== Scenario ========================
 
-export const listScenarios = () => api.get('/scenarios').then(r => r.data);
+export const listScenarios = async () => {
+  const data = await api.get('/scenarios').then(r => r.data);
+  if (Array.isArray(data)) return data;
+  // 兼容分页包装或异常响应，避免调用方对非数组执行 map
+  return Array.isArray(data?.items) ? data.items : [];
+};
 export const createScenario = (data: any) => api.post('/scenarios', data).then(r => r.data);
 export const updateScenario = (id: number, data: any) => api.put(`/scenarios/${id}`, data).then(r => r.data);
 export const getScenario = (id: number) => api.get(`/scenarios/${id}`).then(r => r.data);

@@ -65,10 +65,15 @@ const RsiLoopListPage: React.FC = () => {
           scenario_id: scenarioId,
           keyword: keyword || undefined,
         });
-        setLoops(data.items || []);
-        setTotal(data.total || 0);
-        setPage(data.page || nextPage);
-        setPageSize(data.page_size || nextPageSize);
+        const items: RsiLoop[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.items)
+            ? data.items
+            : [];
+        setLoops(items);
+        setTotal(Number(data?.total ?? items.length));
+        setPage(Number(data?.page ?? nextPage));
+        setPageSize(Number(data?.page_size ?? nextPageSize));
       } catch (error: any) {
         const detail = error?.response?.data?.detail;
         message.error(typeof detail === 'string' ? detail : '加载 RSI 循环失败');
@@ -80,7 +85,9 @@ const RsiLoopListPage: React.FC = () => {
   );
 
   useEffect(() => {
-    api.listScenarios().then((data) => setScenarios(data as EvalScenario[])).catch(() => undefined);
+    api.listScenarios()
+      .then((data) => setScenarios(Array.isArray(data) ? (data as EvalScenario[]) : []))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {

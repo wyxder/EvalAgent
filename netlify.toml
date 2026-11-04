@@ -6,6 +6,12 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# API 请求不允许回退到 index.html：否则前端会收到 HTML 字符串，导致列表渲染报 map is not a function
+[[redirects]]
+  from = "/api/*"
+  to = "/index.html"
+  status = 404
+
 # SPA 路由回退：未匹配的路径统一交给 index.html，避免 React Router 深层路由 404
 [[redirects]]
   from = "/*"
