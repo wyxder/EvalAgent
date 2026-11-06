@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Button,
-  Carousel,
   Drawer,
   Space,
   Tag,
@@ -44,43 +43,6 @@ const MARQUEE_ITEMS = [
   { icon: <SwapOutlined />, label: '双盲 A/B 人工偏好盲测' },
   { icon: <SafetyCertificateOutlined />, label: '场景快照冻结 · 零漂移保证' },
   { icon: <CodeOutlined />, label: 'vLLM / Ollama 私有化大模型接入' },
-];
-
-// Carousel showcases
-const CAROUSEL_SLIDES = [
-  {
-    tag: 'AI Agent 工具链质检',
-    title: '复杂任务目标完成度与工具调用死循环排查',
-    desc: '深度解析 Agent 决策轨迹：评估 Tool 选取合理性、参数键值与动态变量准确性，同时计算步骤执行效率（Step Efficiency），自动报警工具死循环与参数幻觉。',
-    visualTitle: 'Agent 执行链路与 Trace',
-    metrics: [
-      { label: '工具选取准确率', val: '97.8%' },
-      { label: '参数键值匹配度', val: '99.1%' },
-      { label: '步骤执行效率', val: '92.4%' },
-    ],
-  },
-  {
-    tag: 'RSI 评测驱动自进化',
-    title: '业内首创「评估-归因-提案-回归-写回-回滚」闭环',
-    desc: '以真实评测为基线，自动提取失败簇生成白名单 Patch。影子任务全自动验证，结合冻结参考阈值与 Holdout 样本严密隔离，经审批一键写回，支持秒级版本回滚。',
-    visualTitle: '自进化循环状态机',
-    metrics: [
-      { label: '目标指标均值提升', val: '+12.6%' },
-      { label: '影子回归耗时', val: '< 30s' },
-      { label: '版本回滚一致性', val: '100%' },
-    ],
-  },
-  {
-    tag: '双盲 A/B 偏好测试',
-    title: '随机混淆防偏置，让人工体感决策科学化',
-    desc: '支持 LLM vs LLM、接口 vs 接口等多模式。自动抹除模型代号标签与乱序置乱，审校人员盲测投票，实时产出胜率分布（Win Rate）与 ELO 偏好雷达。',
-    visualTitle: '双盲投票室与胜率大盘',
-    metrics: [
-      { label: '新版模型胜率', val: '64.2%' },
-      { label: '平局率 (Tie)', val: '22.0%' },
-      { label: '评估样本量', val: '120 条' },
-    ],
-  },
 ];
 
 // Target Personas
@@ -239,16 +201,16 @@ export const LandingPage: React.FC = () => {
           <Button
             type="text"
             className="btn-ghost-glow"
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/workbench')}
             style={{ borderRadius: 8 }}
           >
-            登入控制台
+            进入工作台
           </Button>
           <Button
             type="primary"
             className="btn-gradient-primary"
             icon={<RocketOutlined />}
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/workbench')}
             style={{ borderRadius: 8 }}
           >
             立即使用
@@ -296,7 +258,7 @@ export const LandingPage: React.FC = () => {
             type="primary"
             block
             className="btn-gradient-primary"
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/workbench')}
             style={{ marginTop: 24, height: 44 }}
           >
             立即免费使用
@@ -327,7 +289,7 @@ export const LandingPage: React.FC = () => {
             size="large"
             className="btn-gradient-primary"
             icon={<ThunderboltOutlined />}
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/workbench')}
             style={{ height: 50, padding: '0 36px', fontSize: 16, borderRadius: 10 }}
           >
             立即免费体验
@@ -516,82 +478,6 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Interactive Carousel Showcase */}
-      <section className="landing-section" style={{ paddingTop: 40, paddingBottom: 60 }}>
-        <div className="carousel-card">
-          <Carousel autoplay autoplaySpeed={5000} effect="fade">
-            {CAROUSEL_SLIDES.map((slide, idx) => (
-              <div key={idx}>
-                <div className="carousel-slide-content">
-                  <div className="carousel-slide-info">
-                    <span className="carousel-slide-tag">{slide.tag}</span>
-                    <h3 className="carousel-slide-title">{slide.title}</h3>
-                    <p className="carousel-slide-desc">{slide.desc}</p>
-                    <Space size={12}>
-                      <Button
-                        type="primary"
-                        className="btn-gradient-primary"
-                        icon={<RocketOutlined />}
-                        onClick={() => navigate('/login')}
-                        style={{ borderRadius: 8, height: 42 }}
-                      >
-                        立即上手体验
-                      </Button>
-                      <Button
-                        className="btn-ghost-glow"
-                        onClick={() => scrollTo('matrix')}
-                        style={{ borderRadius: 8, height: 42 }}
-                      >
-                        查看对比
-                      </Button>
-                    </Space>
-                  </div>
-
-                  <div className="carousel-slide-visual">
-                    <div style={{ width: '100%', maxWidth: 380 }}>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: '#60a5fa',
-                          marginBottom: 16,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        <BarChartOutlined />
-                        <span>{slide.visualTitle}</span>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        {slide.metrics.map((m, mIdx) => (
-                          <div
-                            key={mIdx}
-                            style={{
-                              background: '#1e293b',
-                              padding: '14px 18px',
-                              borderRadius: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              border: '1px solid rgba(255, 255, 255, 0.06)',
-                            }}
-                          >
-                            <span style={{ color: '#cbd5e1', fontSize: 13 }}>{m.label}</span>
-                            <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: 16 }}>{m.val}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </Carousel>
-        </div>
-      </section>
-
       {/* Radar Chart Section */}
       <section id="radar" className="landing-section">
         <div className="section-header">
@@ -762,7 +648,7 @@ export const LandingPage: React.FC = () => {
               className="btn-ghost-glow"
               size="large"
               block
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/workbench')}
               style={{ borderRadius: 8 }}
             >
               立即免费体验
@@ -811,7 +697,7 @@ export const LandingPage: React.FC = () => {
               className="btn-gradient-primary"
               size="large"
               block
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/workbench')}
               style={{ borderRadius: 8 }}
             >
               免费试用 14 天
@@ -854,7 +740,7 @@ export const LandingPage: React.FC = () => {
               className="btn-ghost-glow"
               size="large"
               block
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/workbench')}
               style={{ borderRadius: 8 }}
             >
               联系专家方案顾问
@@ -923,7 +809,7 @@ export const LandingPage: React.FC = () => {
             size="large"
             className="btn-gradient-primary"
             icon={<ThunderboltOutlined />}
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/workbench')}
             style={{ height: 50, padding: '0 40px', fontSize: 17, borderRadius: 10 }}
           >
             立即免费开始使用
@@ -980,7 +866,6 @@ export const LandingPage: React.FC = () => {
           <div>
             <div style={{ color: '#cbd5e1', fontWeight: 600, marginBottom: 14, fontSize: 14 }}>快速直达</div>
             <Space direction="vertical" size={8}>
-              <span style={{ color: '#60a5fa', cursor: 'pointer', fontSize: 13 }} onClick={() => navigate('/login')}>一键体验登录</span>
               <span style={{ color: '#60a5fa', cursor: 'pointer', fontSize: 13 }} onClick={() => navigate('/workbench')}>评测实验工作台</span>
               <span style={{ color: '#60a5fa', cursor: 'pointer', fontSize: 13 }} onClick={() => navigate('/rsi')}>RSI 自进化管理</span>
             </Space>

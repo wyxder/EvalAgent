@@ -15,7 +15,6 @@ import {
   MenuUnfoldOutlined,
   RobotOutlined,
   GlobalOutlined,
-  LogoutOutlined,
 } from '@ant-design/icons';
 
 import ErrorBoundary from './components/ErrorBoundary';
@@ -36,7 +35,6 @@ const BlindTestPage = React.lazy(() => import('./pages/BlindTestPage'));
 const RsiLoopListPage = React.lazy(() => import('./pages/RsiLoopListPage'));
 const RsiLoopDetailPage = React.lazy(() => import('./pages/RsiLoopDetailPage'));
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
-const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -87,9 +85,8 @@ const App: React.FC = () => {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  // If user is accessing the landing page or login page directly, render them standalone
+  // 官网宣传页独立渲染，其余路径进入评测控制台
   const isLanding = location.pathname === '/' || location.pathname === '/landing';
-  const isLogin = location.pathname === '/login';
 
   const pageFallback = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '96px 0' }}>
@@ -103,16 +100,6 @@ const App: React.FC = () => {
       <ErrorBoundary title="官网页面加载异常">
         <Suspense fallback={pageFallback}>
           <LandingPage />
-        </Suspense>
-      </ErrorBoundary>
-    );
-  }
-
-  if (isLogin) {
-    return (
-      <ErrorBoundary title="登录页面加载异常">
-        <Suspense fallback={pageFallback}>
-          <LoginPage />
         </Suspense>
       </ErrorBoundary>
     );
@@ -154,15 +141,6 @@ const App: React.FC = () => {
             style={{ borderRadius: 6 }}
           >
             官网宣传页
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<LogoutOutlined />}
-            onClick={() => navigate('/login')}
-            style={{ color: '#64748b' }}
-          >
-            切换身份
           </Button>
         </Space>
       </Header>
