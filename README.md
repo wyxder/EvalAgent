@@ -5,6 +5,8 @@
 ---
 
 ## 📋 项目简介
+<img width="2470" height="1303" alt="image" src="https://github.com/user-attachments/assets/251ec04b-427f-4299-9e43-6e3abab32132" />
+<img width="2539" height="1264" alt="image" src="https://github.com/user-attachments/assets/c168d1c0-a419-4e7f-9634-9d82fd90fedf" />
 
 **AI Evaluation Platform** 是一套专为 **RAG 检索增强生成**、**AI Agent 智能体**、**多轮智能对话** 等复杂业务场景打造的**现代化、企业级自托管 AI 应用评测与运营中枢**。
 
